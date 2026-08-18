@@ -215,10 +215,10 @@
 
       <!-- Sidebar Footer -->
       <div class="px-3 pb-5 pt-3 border-t border-brand-borderLight space-y-1">
-        <button id="sidebar-go-admin" class="hidden w-full flex items-center gap-3 px-3 py-2 rounded-lg text-brand-primaryBlue hover:bg-brand-primaryBlueLight transition-all text-xs font-bold">
-          <i class="ph ph-shield-check text-base"></i>
-          <span>Chuyển sang Admin Portal</span>
-        </button>
+        <a href="/admin" id="sidebar-go-admin" class="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-indigo-600 bg-indigo-50 hover:bg-indigo-100 transition-all text-xs font-bold no-underline">
+          <i class="ph ph-crown text-base"></i>
+          <span>👑 Master Admin Portal</span>
+        </a>
         <button id="sidebar-logout-btn" class="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-rose-600 hover:bg-rose-50 transition-all text-xs font-bold">
           <i class="ph ph-sign-out text-base"></i>
           <span>Đăng xuất</span>
@@ -239,6 +239,10 @@
         <h2 class="text-sm font-bold text-brand-darkText truncate leading-tight">Quản lý Đơn Hàng</h2>
         <p class="text-[10px] text-brand-darkText/50 font-mono-code hidden sm:block">Auto Fill Order - VNPost & J&T</p>
       </div>
+      <a href="/admin" class="btn bg-indigo-600 hover:bg-indigo-700 text-white flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-bold rounded-lg shadow-sm no-underline" title="Mở trang Quản trị Master Admin">
+        <i class="ph ph-crown text-sm"></i>
+        <span>👑 Master Admin</span>
+      </a>
       <button id="refresh-btn" title="Tải lại dữ liệu" class="btn btn-outline px-3 py-1.5 text-[11px]">
         <i class="ph ph-arrows-clockwise text-sm"></i>
         <span class="hidden sm:inline">Tải lại</span>
@@ -280,9 +284,9 @@
             <button id="right-nav-customers" class="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-xs font-semibold text-brand-darkText hover:bg-brand-primaryBlueLight hover:text-brand-primaryBlue transition-all text-left">
               <i class="ph ph-users text-base"></i><span>Khách hàng</span>
             </button>
-            <button id="right-nav-go-admin" class="hidden w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-xs font-semibold text-brand-primaryBlue hover:bg-brand-primaryBlueLight transition-all text-left">
-              <i class="ph ph-shield-check text-base"></i><span>Admin Portal</span>
-            </button>
+            <a href="/admin" id="right-nav-go-admin" class="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-xs font-semibold text-indigo-600 hover:bg-indigo-50 transition-all text-left no-underline">
+              <i class="ph ph-crown text-base"></i><span>👑 Master Admin Portal</span>
+            </a>
             <button id="right-nav-refresh" class="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-xs font-medium text-brand-darkText hover:bg-brand-neutralBg transition-all text-left">
               <i class="ph ph-arrows-clockwise text-base"></i><span>Tải lại dữ liệu</span>
             </button>
