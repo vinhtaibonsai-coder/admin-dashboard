@@ -1,4 +1,7 @@
 {
+  "version": 2,
+  "buildCommand": null,
+  "outputDirectory": null,
   "cleanUrls": true,
   "routes": [
     { "src": "/login", "dest": "/login.html" },
