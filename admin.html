@@ -1,0 +1,1059 @@
+<!DOCTYPE html>
+<html lang="vi">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Master Admin Portal - Auto Fill Order System</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Plus+Jakarta+Sans:wght@500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="options.css">
+  <script src="https://unpkg.com/@phosphor-icons/web"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script type="module" src="supabase-config.js"></script>
+  <script type="module" src="auth.session.js"></script>
+  <script type="module" src="auth.service.js"></script>
+  <script type="module" src="storage.js"></script>
+  <style>
+    .badge-primary {
+      background: var(--primary-light);
+      color: var(--primary-dark);
+      border: 1px solid var(--primary);
+      font-weight: 700;
+    }
+    .badge-danger {
+      background: var(--red-bg);
+      color: #EF4444;
+      border: 1px solid var(--red-soft);
+    }
+    .badge-success {
+      background: var(--mint-bg);
+      color: #10B981;
+      border: 1px solid var(--mint);
+    }
+
+    .hidden { display: none !important; }
+
+    /* ---- Cấu hình Extension menu ---- */
+    .cfg-menu-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      width: 100%;
+      padding: 10px 12px;
+      border: none;
+      background: transparent;
+      border-radius: 8px;
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--text);
+      cursor: pointer;
+      text-align: left;
+      transition: background 0.15s;
+    }
+    .cfg-menu-item:hover { background: var(--bg); }
+    .cfg-menu-item.active {
+      background: var(--primary-light);
+      color: var(--primary);
+      font-weight: 700;
+    }
+    body.dark-mode .cfg-menu-item.active { background: rgba(79, 70, 229, 0.15); color: #A5B4FC; }
+
+    .cfg-layout { display: flex; gap: 16px; align-items: flex-start; }
+    .cfg-menu-col {
+      width: 230px;
+      flex-shrink: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 10px;
+    }
+    .cfg-menu-col .cfg-label {
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: var(--text-s);
+      padding: 4px 10px;
+    }
+    .cfg-main { flex: 1; min-width: 0; }
+    .cfg-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; gap: 8px; }
+    .cfg-actions { display: flex; gap: 6px; }
+    .cfg-footer { display: flex; gap: 8px; margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border); }
+    .cfg-note { font-size: 11px; color: var(--text-s); margin-top: 4px; }
+
+    /* ---- Ô chứa thẻ (tags / keys) ---- */
+    .chip-box {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      min-height: 38px;
+      padding: 8px;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+    }
+
+    /* ---- Trường nhập chung ---- */
+    .field, .input-inline {
+      width: 100%;
+      padding: 8px 12px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: var(--card);
+      color: var(--text);
+      font-size: 12px;
+      font-weight: 600;
+      outline: none;
+      transition: border-color 0.15s, box-shadow 0.15s;
+    }
+    .field:focus, .input-inline:focus {
+      border-color: var(--primary);
+      box-shadow: 0 0 0 3px var(--primary-light);
+    }
+    .input-inline { flex: 1; min-width: 0; }
+    textarea.field { font-weight: 400; line-height: 1.5; }
+
+    /* ---- Hàng công cụ ---- */
+    .toolbar-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+    .toolbar-row > .grow { flex: 1; min-width: 0; }
+    .card-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; gap: 8px; flex-wrap: wrap; }
+    .card-head h3 { font-size: 14px; font-weight: 700; margin: 0; display: flex; align-items: center; gap: 8px; }
+
+    /* ---- Ô bật/tắt tính năng ---- */
+    .flag-box {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 12px;
+      border: 1px solid var(--border);
+      border-radius: var(--radius-xs);
+      cursor: pointer;
+      background: var(--card);
+      font-size: 12px;
+      font-weight: 600;
+    }
+    .flag-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; }
+
+    /* ---- Ma trận phân quyền ---- */
+    .perm-box {
+      margin-top: 32px;
+      padding: 20px;
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      box-shadow: var(--shadow-md);
+    }
+    .perm-box h3 {
+      font-size: 14px;
+      font-weight: 700;
+      color: var(--text);
+      margin-bottom: 16px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .perm-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+    .perm-table thead tr { background: var(--bg); border-bottom: 1px solid var(--border); }
+    .perm-table th { padding: 10px; text-align: left; font-weight: 700; }
+    .perm-table th:not(:first-child) { text-align: center; }
+    .perm-table td { padding: 10px; text-align: center; border-bottom: 1px solid var(--border); }
+    .perm-table td:first-child { text-align: left; font-weight: 600; }
+    .perm-table tr:last-child td { border-bottom: none; }
+    .perm-ok { color: #10B981; font-weight: 700; }
+    .perm-no { color: #EF4444; }
+    .perm-warn { color: #F59E0B; font-weight: 600; }
+    .perm-info { color: #3C7363; font-weight: 600; }
+    .perm-table i { font-size: 14px; }
+
+    /* ---- Trạng thái phụ dưới số liệu ---- */
+    .stat-sub { font-size: 11px; margin-top: 4px; font-weight: 600; }
+    .text-green { color: #10B981; }
+    .text-purple { color: #8B5CF6; }
+    .text-amber { color: #F59E0B; }
+    .text-rose { color: #EF4444; }
+
+    /* ---- Liên kết trong sidebar ---- */
+    .side-link {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      width: 100%;
+      padding: 8px 12px;
+      border-radius: 8px;
+      font-size: 11px;
+      font-weight: 700;
+      color: #3C7363;
+      background: transparent;
+      border: 1px solid transparent;
+      cursor: pointer;
+      text-align: left;
+      transition: background 0.15s;
+    }
+    .side-link:hover { background: rgba(60, 115, 99, 0.08); }
+    body.dark-mode .side-link:hover { background: rgba(60, 115, 99, 0.2); }
+
+    /* ---- Tìm kiếm bảng ---- */
+    .search-input { width: 260px; }
+    @media (max-width: 720px) {
+      .search-input { width: 100%; }
+      .cfg-layout { flex-direction: column; }
+      .cfg-menu-col { width: 100%; }
+    }
+  </style>
+  <script type="module" src="theme-manager.js"></script>
+</head>
+
+<body>
+
+  <!-- SIDEBAR (Giống cấu trúc sidebar options.html) -->
+  <aside class="sidebar">
+    <div class="sidebar-logo">
+      <div class="sidebar-logo-icon">AF</div>
+      <div class="sidebar-logo-text">
+        <h2>Auto Fill Order</h2>
+        <p>Master Admin Portal</p>
+      </div>
+    </div>
+
+    <nav class="nav-menu">
+      <button id="tab-metrics" class="nav-item active">
+        <i class="ph ph-chart-line-up text-lg"></i>
+        <span>Tổng quan Hệ thống</span>
+      </button>
+
+      <button id="tab-shops" class="nav-item">
+        <i class="ph ph-storefront text-lg"></i>
+        <span>Quản lý & Cấp Shop</span>
+      </button>
+
+      <button id="tab-permissions" class="nav-item">
+        <i class="ph ph-sliders text-lg"></i>
+        <span>Hạn ngạch & Quyền Shop</span>
+      </button>
+
+      <button id="tab-configs" class="nav-item">
+        <i class="ph ph-gear text-lg"></i>
+        <span>Cấu hình Extension</span>
+      </button>
+
+      <button id="tab-devices" class="nav-item">
+        <i class="ph ph-device-mobile text-lg"></i>
+        <span>Thiết bị Extension</span>
+      </button>
+
+      <button id="tab-audit" class="nav-item">
+        <i class="ph ph-shield-check text-lg"></i>
+        <span>Audit Logs</span>
+      </button>
+
+      <button id="tab-users" class="nav-item">
+        <i class="ph ph-users text-lg"></i>
+        <span>Quản lý người dùng</span>
+      </button>
+    </nav>
+
+    <div class="sidebar-footer">
+      <button id="btn-go-to-index" class="side-link" onclick="location.href='index.html'">
+        <i class="ph ph-arrow-square-left text-base"></i> Về Dashboard chính
+      </button>
+      <div class="illust-box">
+        <p>Bảo Mật SSL 256-bit</p>
+      </div>
+    </div>
+  </aside>
+
+  <!-- MAIN CONTENT WRAPPER -->
+  <div class="content-wrapper">
+
+    <!-- TOPBAR (Giống cấu trúc topbar options.html) -->
+    <header class="topbar">
+      <div class="topbar-title">MASTER ADMIN PORTAL</div>
+      <span class="status-badge badge-primary">SUPER ADMIN</span>
+
+      <div class="topbar-right">
+        <button id="btn-toggle-theme" title="Chuyển chế độ Sáng / Tối" class="btn btn-secondary">
+          <i id="theme-icon" class="ph ph-sun text-base"></i>
+          <span id="theme-text">Giao diện Sáng</span>
+        </button>
+
+        <div class="avatar" id="admin-avatar">A</div>
+        <span id="admin-user-label" class="font-semibold text-xs">Admin System</span>
+
+        <button id="btn-admin-logout" class="btn btn-danger btn-sm">
+          <i class="ph ph-sign-out"></i> Đăng xuất
+        </button>
+      </div>
+    </header>
+
+    <!-- CONTENT BODY -->
+    <main class="content">
+
+      <!-- SECTION 1: METRICS OVERVIEW -->
+      <section id="section-metrics" class="tab-content active">
+        <div class="page-hdr">
+          <div>
+            <h1>Chỉ số Hệ thống (Metrics)</h1>
+            <p>Thống kê lưu lượng và hoạt động của tất cả các cửa hàng trên hệ thống.</p>
+          </div>
+          <button id="btn-refresh-metrics" class="btn btn-secondary">
+            <i class="ph ph-arrows-clockwise text-sm"></i> Làm mới Dữ liệu
+          </button>
+        </div>
+
+        <div class="stats-grid">
+          <div class="stat-card">
+            <div class="stat-icon orders">
+              <i class="ph ph-storefront"></i>
+            </div>
+            <div class="stat-info">
+              <div class="stat-label">Tổng Cửa hàng</div>
+              <div id="metric-total-shops" class="stat-value">--</div>
+              <div class="stat-sub text-green">Active: <span id="metric-active-shops">--</span></div>
+            </div>
+          </div>
+
+          <div class="stat-card">
+            <div class="stat-icon ratio">
+              <i class="ph ph-users-three"></i>
+            </div>
+            <div class="stat-info">
+              <div class="stat-label">Tổng người dùng</div>
+              <div id="metric-total-users" class="stat-value">--</div>
+              <div class="stat-sub text-purple">Đã xác thực hệ thống</div>
+            </div>
+          </div>
+
+          <div class="stat-card">
+            <div class="stat-icon cod">
+              <i class="ph ph-package"></i>
+            </div>
+            <div class="stat-info">
+              <div class="stat-label">Đơn đã xử lý</div>
+              <div id="metric-total-orders" class="stat-value">--</div>
+              <div class="stat-sub text-amber">Bóc tách qua AI & Offline</div>
+            </div>
+          </div>
+
+          <div class="stat-card">
+            <div class="stat-icon orders">
+              <i class="ph ph-devices"></i>
+            </div>
+            <div class="stat-info">
+              <div class="stat-label">Thiết bị kết nối</div>
+              <div id="metric-active-devices" class="stat-value">--</div>
+              <div class="stat-sub text-green">Chrome Extension active</div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- SECTION 2: SHOP MANAGEMENT -->
+      <section id="section-shops" class="tab-content hidden">
+        <div class="page-hdr">
+          <div>
+            <h1>Quản lý Cửa hàng & Cấp Tài khoản</h1>
+            <p>Tạo Shop mới, Cấp tài khoản Chủ shop, khôi phục Mật khẩu và khóa/Mở shop.</p>
+          </div>
+          <button id="btn-open-create-shop-modal" class="btn btn-primary">
+            <i class="ph ph-plus-circle text-base"></i> Tạo Shop & Cấp tài khoản Mới
+          </button>
+        </div>
+
+        <div class="data-card">
+          <div class="toolbar-row" style="justify-content:flex-end;">
+            <label class="toolbar-row" style="font-size:12px; font-weight:600; cursor:pointer;">
+              <input type="checkbox" id="chk-show-deleted-shops" />
+              <span>Hiển thị Shop đã xóa</span>
+            </label>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Tên Shop</th>
+                  <th>Chủ Shop / Email</th>
+                  <th>Ngày tạo</th>
+                  <th>Trạng thái</th>
+                  <th style="text-align:center;">Thao tác Admin</th>
+                </tr>
+              </thead>
+              <tbody id="admin-shops-tbody">
+                <tr>
+                  <td colspan="5" style="text-align:center; padding:24px;">Đang tải danh sách Shop...</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- SECTION 3: PERMISSIONS & QUOTAS -->
+      <section id="section-permissions" class="tab-content hidden">
+        <div class="page-hdr">
+          <div>
+            <h1>Hạn ngạch & Quyền tính năng Shop</h1>
+            <p>Cấu hình giới hạn đơn/ngày, số lượng Thiết bị kết nối và bật/tắt quyền AI theo từng Shop.</p>
+          </div>
+        </div>
+
+        <div class="config-section">
+          <div class="form-group" style="max-width:360px;">
+            <label>Chọn Shop Cấu hình:</label>
+            <select id="select-quota-shop" class="field">
+              <option value="">-- Chọn Cửa hàng --</option>
+            </select>
+          </div>
+
+          <div id="quota-editor-form" class="hidden" style="margin-top:20px; padding-top:20px; border-top:1px solid var(--border);">
+            <div class="form-row-2">
+              <div class="form-group">
+                <label>Số đơn bóc tách AI tối đa / ngày</label>
+                <input type="number" id="input-daily-quota" class="field" value="500" />
+              </div>
+              <div class="form-group">
+                <label>Số Thiết bị Extension kết nối tối đa</label>
+                <input type="number" id="input-max-devices" class="field" value="5" />
+              </div>
+            </div>
+
+            <div class="form-group" style="margin-top:16px;">
+              <label style="margin-bottom:10px;">Cờ Bật/Tắt Tính năng cho Shop:</label>
+              <div class="flag-grid">
+                <label class="flag-box">
+                  <input type="checkbox" id="chk-flag-ai" checked />
+                  <span>Bóc tách đơn bằng AI (Groq)</span>
+                </label>
+                <label class="flag-box">
+                  <input type="checkbox" id="chk-flag-vnpost" checked />
+                  <span>Tự động điền VNPost</span>
+                </label>
+                <label class="flag-box">
+                  <input type="checkbox" id="chk-flag-jt" checked />
+                  <span>Tự động điền J&T Express</span>
+                </label>
+              </div>
+            </div>
+
+            <button id="btn-save-shop-quota" class="btn btn-primary" style="margin-top:16px;">
+              <i class="ph ph-floppy-disk text-base"></i> Lưu Cấu hình Hạn ngạch & Quyền
+            </button>
+          </div>
+
+          <!-- MA TRẬN PHÂN QUYỀN -->
+          <div class="perm-box">
+            <h3><i class="ph ph-shield-check text-green"></i> Ma trận Phân quyền Hệ thống (Permission Matrix)</h3>
+            <div class="table-wrap">
+              <table class="perm-table">
+                <thead>
+                  <tr>
+                    <th>Chức năng</th>
+                    <th>System Admin</th>
+                    <th>Shop Owner</th>
+                    <th>Shop Staff</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td>Quản lý Shop</td>
+                    <td class="perm-ok"><i class="ph ph-check-circle"></i></td>
+                    <td class="perm-no"><i class="ph ph-x-circle"></i></td>
+                    <td class="perm-no"><i class="ph ph-x-circle"></i></td>
+                  </tr>
+                  <tr>
+                    <td>Chuyển Shop</td>
+                    <td class="perm-ok"><i class="ph ph-check-circle"></i></td>
+                    <td class="perm-no"><i class="ph ph-x-circle"></i></td>
+                    <td class="perm-no"><i class="ph ph-x-circle"></i></td>
+                  </tr>
+                  <tr>
+                    <td>Quản lý User</td>
+                    <td class="perm-ok"><i class="ph ph-check-circle"></i></td>
+                    <td class="perm-warn">Chỉ shop Mình</td>
+                    <td class="perm-no"><i class="ph ph-x-circle"></i></td>
+                  </tr>
+                  <tr>
+                    <td>Groq API</td>
+                    <td class="perm-ok"><i class="ph ph-check-circle"></i></td>
+                    <td class="perm-warn">Riêng Shop</td>
+                    <td class="perm-info">Chỉ đọc (Không xem key)</td>
+                  </tr>
+                  <tr>
+                    <td>Địa chỉ</td>
+                    <td class="perm-ok"><i class="ph ph-check-circle"></i></td>
+                    <td class="perm-ok"><i class="ph ph-check-circle"></i></td>
+                    <td class="perm-no"><i class="ph ph-x-circle"></i></td>
+                  </tr>
+                  <tr>
+                    <td>Nhật ký lỗi</td>
+                    <td class="perm-ok"><i class="ph ph-check-circle"></i></td>
+                    <td class="perm-ok"><i class="ph ph-check-circle"></i></td>
+                    <td class="perm-no"><i class="ph ph-x-circle"></i></td>
+                  </tr>
+                  <tr>
+                    <td>Máy tính</td>
+                    <td class="perm-ok"><i class="ph ph-check-circle"></i></td>
+                    <td class="perm-ok"><i class="ph ph-check-circle"></i></td>
+                    <td class="perm-no"><i class="ph ph-x-circle"></i></td>
+                  </tr>
+                  <tr>
+                    <td>Thông báo</td>
+                    <td class="perm-ok"><i class="ph ph-check-circle"></i></td>
+                    <td class="perm-ok"><i class="ph ph-check-circle"></i></td>
+                    <td class="perm-ok"><i class="ph ph-check-circle"></i></td>
+                  </tr>
+                  <tr>
+                    <td>Draft</td>
+                    <td class="perm-ok"><i class="ph ph-check-circle"></i></td>
+                    <td class="perm-ok"><i class="ph ph-check-circle"></i></td>
+                    <td class="perm-ok"><i class="ph ph-check-circle"></i></td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- SECTION 4: EXTENSION CONFIGS -->
+      <section id="section-configs" class="tab-content hidden">
+        <div class="page-hdr">
+          <div>
+            <h1>Cấu hình Extension Tập trung</h1>
+            <p>Quản lý Groq API Key hệ thống, AI Prompt Mặc định, Danh sách đen SĐT và Chế độ bảo trì.</p>
+          </div>
+        </div>
+
+        <div class="config-section">
+          <div class="cfg-layout">
+            <div class="cfg-menu-col">
+              <div class="cfg-label">Cấu hình Extension</div>
+              <button type="button" id="cfg-tab-groq" class="cfg-menu-item active">
+                <i class="ph ph-key text-indigo-500"></i><span>Groq API Keys</span>
+              </button>
+              <button type="button" id="cfg-tab-prompt" class="cfg-menu-item">
+                <i class="ph ph-brain text-purple-500"></i><span>AI System Prompt</span>
+              </button>
+              <button type="button" id="cfg-tab-blacklist" class="cfg-menu-item">
+                <i class="ph ph-phone-slash text-rose-500"></i><span>SĐT Đen Toàn Hệ Thống</span>
+              </button>
+            </div>
+
+            <div class="cfg-main">
+
+              <div class="data-card" id="cfg-page-groq">
+                <div class="cfg-head">
+                  <h3 class="card-head" style="margin-bottom:0;"><i class="ph ph-key text-indigo-500"></i> Danh sách Groq API Keys dùng chung</h3>
+                  <div class="cfg-actions">
+                    <button type="button" id="btn-add-groq-key-view" class="btn btn-sm btn-primary"><i class="ph ph-plus text-base"></i> Thêm Mới</button>
+                    <button type="button" id="btn-edit-groq-keys" class="btn btn-sm btn-secondary"><i class="ph ph-pencil-simple text-base"></i> Sửa</button>
+                  </div>
+                </div>
+                <div id="view-groq-keys" class="chip-box"></div>
+                <div id="edit-groq-keys" class="hidden">
+                  <div class="toolbar-row" style="margin-bottom:8px;">
+                    <input type="text" id="input-groq-key-add" class="input-inline" placeholder="gsk_key..." />
+                    <button type="button" id="btn-add-groq-key" class="btn btn-primary"><i class="ph ph-plus"></i> Thêm</button>
+                  </div>
+                  <div id="groq-keys-tags" class="chip-box"></div>
+                  <p class="cfg-note">Extension của Shop sẽ tự động xoay vòng danh sách Key này khi thực hiện bóc tách đơn AI.</p>
+                  <div class="cfg-footer">
+                    <button type="button" id="btn-cancel-groq-keys" class="btn btn-sm btn-secondary">Hủy</button>
+                  </div>
+                </div>
+                <div class="cfg-footer">
+                  <button type="button" id="btn-save-groq-keys" class="btn btn-sm btn-primary"><i class="ph ph-floppy-disk text-base"></i> Lưu Keys</button>
+                </div>
+              </div>
+
+              <div class="data-card hidden" id="cfg-page-prompt">
+                <div class="cfg-head">
+                  <h3 class="card-head" style="margin-bottom:0;"><i class="ph ph-brain text-purple-500"></i> AI System Prompt bóc tách đơn Mặc định</h3>
+                  <button type="button" id="btn-edit-ai-prompt" class="btn btn-sm btn-secondary"><i class="ph ph-pencil-simple text-base"></i> Sửa</button>
+                </div>
+                <div id="view-ai-prompt" style="padding:10px 12px; background:var(--bg); border:1px solid var(--border); border-radius:8px; font-size:12px; color:var(--text); white-space:pre-wrap; line-height:1.5;"></div>
+                <div id="edit-ai-prompt" class="hidden">
+                  <textarea id="textarea-default-prompt" class="field" rows="3"></textarea>
+                  <div class="cfg-footer">
+                    <button type="button" id="btn-cancel-ai-prompt" class="btn btn-sm btn-secondary">Hủy</button>
+                  </div>
+                </div>
+                <div class="cfg-footer">
+                  <button type="button" id="btn-save-ai-prompt" class="btn btn-sm btn-primary"><i class="ph ph-floppy-disk text-base"></i> Lưu Prompt</button>
+                </div>
+              </div>
+
+              <div class="data-card hidden" id="cfg-page-blacklist">
+                <div class="cfg-head">
+                  <h3 class="card-head" style="margin-bottom:0;"><i class="ph ph-phone-slash text-rose-500"></i> Danh sách đen SĐT bom hàng Toàn hệ thống</h3>
+                  <button type="button" id="btn-edit-blacklist" class="btn btn-sm btn-secondary"><i class="ph ph-pencil-simple text-base"></i> Sửa</button>
+                </div>
+                <div id="view-blacklist-phones" class="chip-box"></div>
+                <div id="edit-blacklist" class="hidden">
+                  <div class="toolbar-row" style="margin-bottom:8px;">
+                    <input type="text" id="input-blacklist-phone-add" class="input-inline" placeholder="SĐT bom hàng..." />
+                    <button type="button" id="btn-add-blacklist-phone" class="btn btn-primary"><i class="ph ph-plus"></i> Thêm</button>
+                  </div>
+                  <div id="blacklist-phones-tags" class="chip-box"></div>
+                  <div class="cfg-footer">
+                    <button type="button" id="btn-cancel-blacklist" class="btn btn-sm btn-secondary">Hủy</button>
+                  </div>
+                </div>
+                <div class="cfg-footer">
+                  <button type="button" id="btn-save-blacklist" class="btn btn-sm btn-primary"><i class="ph ph-floppy-disk text-base"></i> Lưu Danh Sách Đen</button>
+                </div>
+              </div>
+
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- SECTION 5: AUDIT LOGS -->
+      <section id="section-audit" class="tab-content hidden">
+        <div class="page-hdr">
+          <div>
+            <h1>Nhật ký Audit Logs & Quản lý Thiết bị</h1>
+            <p>Theo dõi các hoạt động bảo mật và thu hồi Thiết bị kết nối từ xa.</p>
+          </div>
+        </div>
+
+        <div class="data-card">
+          <div class="card-head">
+            <h3>Lịch sử Thao tác Bảo Mật (Audit Trail)</h3>
+            <input type="text" id="input-audit-search" class="field search-input" placeholder="Tìm hành động, tài khoản..." />
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Thời gian</th>
+                  <th>Hành động</th>
+                  <th>Tài khoản</th>
+                  <th>Chi tiết thay đổi</th>
+                </tr>
+              </thead>
+              <tbody id="admin-audit-tbody">
+                <tr>
+                  <td colspan="4" style="text-align:center; padding:20px;">Đang tải Nhật ký...</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="toolbar-row" style="justify-content:space-between; margin-top:12px; font-size:12px;">
+            <span id="audit-page-info" style="color:var(--text-s);">Trang 1</span>
+            <div class="toolbar-row">
+              <button id="btn-audit-prev" class="btn btn-secondary btn-sm" disabled>Trước</button>
+              <button id="btn-audit-next" class="btn btn-secondary btn-sm" disabled>Sau</button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- SECTION 6a: DEVICE MANAGEMENT -->
+      <section id="section-devices" class="tab-content hidden">
+        <div class="page-hdr">
+          <div>
+            <h1>Thiết bị Extension</h1>
+            <p>Danh sách Thiết bị Cài đặt, thu hồi phiên lập tức khi Cần.</p>
+          </div>
+        </div>
+
+        <div class="data-card">
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Người dùng</th>
+                  <th>Tên Thiết bị</th>
+                  <th>Trình duyệt</th>
+                  <th>Phiên bản</th>
+                  <th>Shop gắn</th>
+                  <th>Truy cập cuối</th>
+                  <th>Trạng thái</th>
+                  <th style="text-align:center;">Thao tác</th>
+                </tr>
+              </thead>
+              <tbody id="devices-tbody">
+                <tr><td colspan="8" style="text-align:center; padding:24px;">Đang tải danh sách Thiết bị...</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- SECTION 6: USER MANAGEMENT -->
+      <section id="section-users" class="tab-content hidden">
+        <div class="page-hdr">
+          <div>
+            <h1>Quản lý người dùng & Vai trò</h1>
+            <p>Xem, tạo, gán quyền và Quản lý tài khoản người dùng toàn hệ thống.</p>
+          </div>
+          <button id="btn-open-create-user-modal" class="btn btn-primary">
+            <i class="ph ph-user-plus text-base"></i> Tạo người dùng Mới
+          </button>
+        </div>
+
+        <div class="toolbar-row" style="margin-bottom:16px; gap:12px;">
+          <input type="text" id="search-user-keyword" class="field" placeholder="Tìm kiếm theo Tên, Email..." style="width:240px;" />
+          
+          <select id="filter-user-role" class="field" style="width:200px;">
+            <option value="">Tất Cả Vai trò</option>
+            <option value="SYSTEM_ADMIN">SYSTEM_ADMIN</option>
+            <option value="SHOP_OWNER">SHOP_OWNER</option>
+            <option value="SHOP_MANAGER">SHOP_MANAGER</option>
+            <option value="SHOP_STAFF">SHOP_STAFF</option>
+            <option value="EXTENSION_USER">EXTENSION_USER</option>
+            <option value="SUPPORT">SUPPORT</option>
+            <option value="VIEWER">VIEWER</option>
+          </select>
+
+          <select id="filter-user-shop" class="field" style="width:200px;">
+            <option value="">Tất cả Cửa hàng</option>
+            <!-- Tải danh sách cửa hàng động -->
+          </select>
+        </div>
+
+        <div class="data-card">
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th style="width: 80px;">ID</th>
+                  <th>Email</th>
+                  <th>Họ và Tên</th>
+                  <th>Vai trò</th>
+                  <th>Cửa hàng</th>
+                  <th>Ngày tạo</th>
+                  <th>Trạng thái</th>
+                  <th>Lần cuối đăng nhập</th>
+                  <th style="text-align:center; min-width: 320px;">Thao tác</th>
+                </tr>
+              </thead>
+              <tbody id="admin-users-tbody">
+                <tr>
+                  <td colspan="6" style="text-align:center; padding:24px;">Đang tải danh sách người dùng...</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+    </main>
+  </div>
+
+  <!-- MODAL: TẠO NGƯỜI DÙNG MỚI -->
+  <div id="modal-create-user" class="modal-overlay">
+    <div class="modal" style="max-width:420px;">
+      <div class="modal-header">
+        <h3 class="modal-title"><i class="ph ph-user-plus text-indigo-500"></i> Tạo người dùng Mới</h3>
+        <button id="btn-close-create-user-modal" class="modal-close">&times;</button>
+      </div>
+
+      <form id="form-create-user">
+        <div class="modal-body">
+          <div class="form-group">
+            <label>Email (*)</label>
+            <input type="email" id="input-user-email" class="field" placeholder="user@domain.com" required />
+          </div>
+
+          <div class="form-group">
+            <label>Họ và Tên</label>
+            <input type="text" id="input-user-name" class="field" placeholder="Nguyễn Văn A" />
+          </div>
+
+          <div class="form-group">
+            <label>Mật khẩu (*)</label>
+            <input type="password" id="input-user-password" class="field" placeholder="Tối thiểu 6 ký tự" required />
+          </div>
+
+          <div class="form-group">
+            <label>Vai trò</label>
+            <select id="select-user-role" class="field">
+              <option value="EXTENSION_USER">EXTENSION_USER - người dùng Extension</option>
+              <option value="SHOP_STAFF">SHOP_STAFF - Nhân viên lên đơn</option>
+              <option value="SHOP_MANAGER">SHOP_MANAGER - Quản lý Cửa hàng</option>
+              <option value="SHOP_OWNER">SHOP_OWNER - Chủ Cửa hàng</option>
+              <option value="SUPPORT">SUPPORT - Hỗ trợ viên</option>
+              <option value="VIEWER">VIEWER - người xem</option>
+              <option value="SYSTEM_ADMIN">SYSTEM_ADMIN - Quản trị viên</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="modal-footer">
+          <button type="button" id="btn-cancel-create-user" class="btn btn-secondary">Hủy</button>
+          <button type="submit" class="btn btn-primary">
+            <i class="ph ph-check-circle"></i> Tạo người dùng
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- MODAL: GÁN VAI TRÒ -->
+  <div id="modal-set-role" class="modal-overlay">
+    <div class="modal" style="max-width:400px;">
+      <div class="modal-header">
+        <h3 class="modal-title"><i class="ph ph-shield text-indigo-500"></i> Gán Vai trò</h3>
+        <button id="btn-close-set-role-modal" class="modal-close">&times;</button>
+      </div>
+
+      <div class="modal-body">
+        <p id="set-role-user-info" style="font-size:12px; color:var(--text-s); margin-bottom:12px;"></p>
+        <div class="form-group">
+          <label>Vai trò Mới</label>
+          <select id="select-set-role" class="field">
+            <option value="EXTENSION_USER">EXTENSION_USER</option>
+            <option value="SHOP_STAFF">SHOP_STAFF</option>
+            <option value="SHOP_MANAGER">SHOP_MANAGER</option>
+            <option value="SHOP_OWNER">SHOP_OWNER</option>
+            <option value="SUPPORT">SUPPORT</option>
+            <option value="VIEWER">VIEWER</option>
+            <option value="SYSTEM_ADMIN">SYSTEM_ADMIN</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="modal-footer">
+        <button id="btn-close-set-role-modal-2" class="btn btn-secondary">Hủy</button>
+        <button id="btn-confirm-set-role" class="btn btn-primary">Lưu Vai trò</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL: GÁN CỬA HÀNG -->
+  <div id="modal-assign-shop" class="modal-overlay">
+    <div class="modal" style="max-width:400px;">
+      <div class="modal-header">
+        <h3 class="modal-title"><i class="ph ph-storefront text-indigo-500"></i> Gán Cửa hàng</h3>
+        <button id="btn-close-assign-shop-modal" class="modal-close">&times;</button>
+      </div>
+
+      <div class="modal-body">
+        <p id="assign-shop-user-info" style="font-size:12px; color:var(--text-s); margin-bottom:12px;"></p>
+
+        <div class="form-group">
+          <label>Chọn Cửa hàng</label>
+          <select id="select-assign-shop" class="field">
+            <!-- Tự động load danh sách shop qua Javascript -->
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label>Vai trò thành viên trong shop</label>
+          <select id="select-assign-shop-role" class="field">
+            <option value="SHOP_STAFF">SHOP_STAFF - Nhân viên</option>
+            <option value="SHOP_MANAGER">SHOP_MANAGER - Quản lý</option>
+            <option value="SHOP_OWNER">SHOP_OWNER - Chủ Shop</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="modal-footer">
+        <button id="btn-close-assign-shop-modal-2" class="btn btn-secondary">Hủy</button>
+        <button id="btn-confirm-assign-shop" class="btn btn-primary">Lưu Cửa hàng</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL: TẠO SHOP & CẤP TÀI KHOẢN -->
+  <div id="modal-create-shop" class="modal-overlay">
+    <div class="modal">
+      <div class="modal-header">
+        <h3 class="modal-title"><i class="ph ph-storefront text-indigo-500"></i> Tạo Shop Mới & Cấp Tài khoản Chủ Shop</h3>
+        <button id="btn-close-create-shop-modal" class="modal-close">&times;</button>
+      </div>
+
+      <form id="form-create-shop">
+        <div class="modal-body">
+          <div class="form-group">
+            <label>Tên Cửa hàng (Shop Name)</label>
+            <input type="text" id="input-modal-shop-name" class="field" placeholder="Ví dụ: Shop Thời Trang Yến" required />
+          </div>
+
+          <div class="form-group">
+            <label>Họ và Tên Chủ Shop</label>
+            <input type="text" id="input-modal-owner-name" class="field" placeholder="Nguyễn Văn A" required />
+          </div>
+
+          <div class="form-group">
+            <label>Email Đăng nhập Chủ Shop</label>
+            <input type="email" id="input-modal-owner-email" class="field" placeholder="chushop@gmail.com" required />
+          </div>
+
+          <div class="form-group">
+            <label>Mật khẩu Khởi tạo</label>
+            <input type="password" id="input-modal-owner-password" class="field" required />
+          </div>
+        </div>
+
+        <div class="modal-footer">
+          <button type="button" id="btn-cancel-create-shop" class="btn btn-secondary">Hủy</button>
+          <button type="submit" class="btn btn-primary">
+            <i class="ph ph-rocket-launch"></i> Tạo Shop & Cấp Tài khoản
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- MODAL: SỬA SHOP & QUẢN LÝ TÀI KHOẢN -->
+  <div id="modal-edit-shop" class="modal-overlay">
+    <div class="modal" style="max-width:640px;">
+      <div class="modal-header">
+        <h3 class="modal-title"><i class="ph ph-storefront text-indigo-500"></i> Chỉnh sửa Shop & Quản lý Tài khoản</h3>
+        <button id="btn-close-edit-shop-modal" class="modal-close">&times;</button>
+      </div>
+
+      <div class="modal-body" style="max-height:70vh; overflow-y:auto;">
+        <input type="hidden" id="edit-shop-id">
+
+        <!-- THÔNG TIN SHOP -->
+        <div style="margin-bottom:20px; padding-bottom:16px; border-bottom:1px solid var(--border);">
+          <h4 style="font-size:12px; font-weight:800; text-transform:uppercase; letter-spacing:0.5px; margin-bottom:12px; color:var(--text);">
+            <i class="ph ph-info" style="color:var(--primary);"></i> Thông tin Shop
+          </h4>
+          <div class="form-row-2">
+            <div class="form-group">
+              <label>Tên Cửa hàng</label>
+              <input type="text" id="edit-shop-name" class="field" />
+            </div>
+            <div class="form-group">
+              <label>Trạng thái</label>
+              <select id="edit-shop-status" class="field">
+                <option value="active">Active - Đang hoạt động</option>
+                <option value="suspended">Suspended - Tạm khóa</option>
+                <option value="inactive">Inactive - Ngưng hoạt động</option>
+              </select>
+            </div>
+          </div>
+          <div class="form-group">
+            <label>Chủ sở hữu (Owner)</label>
+            <select id="edit-shop-owner" class="field"></select>
+          </div>
+          <button id="btn-save-shop-info" class="btn btn-primary" style="margin-top:8px;">
+            <i class="ph ph-floppy-disk"></i> Lưu thông tin Shop
+          </button>
+        </div>
+
+        <!-- QUẢN LÝ TÀI KHOẢN NHÂN VIÊN -->
+        <div>
+          <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:12px;">
+            <h4 style="font-size:12px; font-weight:800; text-transform:uppercase; letter-spacing:0.5px; color:var(--text);">
+              <i class="ph ph-users-three" style="color:var(--primary);"></i> Tài khoản nhân viên
+            </h4>
+            <button id="btn-add-member-toggle" class="btn btn-sm btn-primary">
+              <i class="ph ph-user-plus"></i> Thêm tài khoản
+            </button>
+          </div>
+
+          <div id="shop-members-list">
+            <div style="text-align:center; padding:24px; color:var(--text-s); font-size:12px;">Đang tải...</div>
+          </div>
+
+          <!-- Form thêm tài khoản -->
+          <div id="add-member-form" class="hidden" style="margin-top:12px; padding:16px; background:var(--bg); border-radius:12px; border:1px solid var(--border);">
+            <div class="toolbar-row" style="margin-bottom:12px;">
+              <button id="btn-mode-select-user" class="btn btn-sm btn-primary" style="flex:1">Chọn người dùng có sẵn</button>
+              <button id="btn-mode-create-user" class="btn btn-sm btn-secondary" style="flex:1">Tạo tài khoản Mới</button>
+            </div>
+
+            <!-- Mode 1: chọn user có sẵn -->
+            <div id="add-mode-select">
+              <div class="form-group">
+                <label>Chọn người dùng</label>
+                <select id="add-member-user-select" class="field"></select>
+              </div>
+            </div>
+
+            <!-- Mode 2: tạo user mới -->
+            <div id="add-mode-create" class="hidden">
+              <div class="form-row-2">
+                <div class="form-group">
+                  <label>Họ và tên</label>
+                  <input type="text" id="add-new-user-name" class="field" placeholder="Nguyễn Văn A" />
+                </div>
+                <div class="form-group">
+                  <label>Email</label>
+                  <input type="email" id="add-new-user-email" class="field" placeholder="email@example.com" />
+                </div>
+              </div>
+              <div class="form-group">
+                <label>Mật khẩu</label>
+                <input type="password" id="add-new-user-password" class="field" />
+              </div>
+            </div>
+
+            <div class="form-group" style="margin-top:8px;">
+              <label>Vai trò</label>
+              <select id="add-member-role-select" class="field">
+                <option value="SHOP_MANAGER">Quản lý</option>
+                <option value="SHOP_STAFF" selected>Nhân viên</option>
+                <option value="VIEWER">Người xem</option>
+              </select>
+            </div>
+
+            <div style="display:flex; justify-content:flex-end; gap:8px; margin-top:12px;">
+              <button id="btn-cancel-add-member" class="btn btn-secondary">Hủy</button>
+              <button id="btn-confirm-add-member" class="btn btn-primary">Thêm</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL: RESET MẬT KHẨU USER -->
+  <div id="modal-reset-pass" class="modal-overlay">
+    <div class="modal" style="max-width:420px;">
+      <div class="modal-header">
+        <h3 class="modal-title"><i class="ph ph-key text-indigo-500"></i> Đặt lại Mật khẩu Tài khoản</h3>
+        <button id="btn-close-reset-pass-modal" class="modal-close">&times;</button>
+      </div>
+
+      <div class="modal-body">
+        <p id="reset-pass-user-info" style="font-size:12px; color:var(--text-s); margin-bottom:12px;">Đổi Mật khẩu cho: ...</p>
+        <div class="form-group">
+          <label>Mật khẩu Mới (*)</label>
+          <input type="password" id="input-reset-new-pass" class="field" placeholder="Nhập Mật khẩu Mới (tối thiểu 6 ký tự)..." />
+        </div>
+      </div>
+
+      <div class="modal-footer">
+        <button id="btn-close-reset-pass-modal-footer" class="btn btn-secondary">Hủy</button>
+        <button id="btn-confirm-reset-pass" class="btn btn-danger">Đổi Mật khẩu</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL: ĐỔI TÊN NGƯỜI DÙNG -->
+  <div id="modal-edit-user-name" class="modal-overlay">
+    <div class="modal" style="max-width:420px;">
+      <div class="modal-header">
+        <h3 class="modal-title"><i class="ph ph-pencil-simple text-indigo-500"></i> Đổi tên Người dùng</h3>
+        <button id="btn-close-edit-name-modal" class="modal-close">&times;</button>
+      </div>
+
+      <div class="modal-body">
+        <p id="edit-name-user-info" style="font-size:12px; color:var(--text-s); margin-bottom:12px;">Đổi tên cho: ...</p>
+        <div class="form-group">
+          <label>Họ và Tên Mới (*)</label>
+          <input type="text" id="input-edit-user-fullname" class="field" placeholder="Nhập Họ và Tên mới..." />
+        </div>
+      </div>
+
+      <div class="modal-footer">
+        <button id="btn-cancel-edit-name" class="btn btn-secondary">Hủy</button>
+        <button id="btn-confirm-edit-name" class="btn btn-primary">Lưu Tên Mới</button>
+      </div>
+    </div>
+  </div>
+
+  <script type="module" src="master-admin.js"></script>
+</body>
+
+</html>
