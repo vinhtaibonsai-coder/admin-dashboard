@@ -1,1805 +1,718 @@
 <!DOCTYPE html>
 <html lang="vi">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Auto Fill Order  Settings</title>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Plus+Jakarta+Sans:wght@500;600;700;800&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="options.css">
-<script src="../assets/theme-manager.js"></script>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Shop Owner Command Center - Auto Fill Order System</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Plus+Jakarta+Sans:wght@500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="options.css">
+  <script src="https://unpkg.com/@phosphor-icons/web"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    :root {
+      --primary: #4F46E5;
+      --primary-dark: #4338CA;
+      --primary-light: #EEF2FF;
+      --primary-glow: rgba(79, 70, 229, 0.2);
+    }
+    body.dark-mode {
+      --primary: #818CF8;
+      --primary-dark: #6366F1;
+      --primary-light: rgba(99, 102, 241, 0.15);
+    }
+    .owner-badge {
+      background: linear-gradient(135deg, #4F46E5 0%, #7C3AED 100%);
+      color: #FFFFFF;
+      font-size: 10px;
+      font-weight: 800;
+      padding: 3px 8px;
+      border-radius: 6px;
+      letter-spacing: 0.5px;
+      text-transform: uppercase;
+      box-shadow: 0 2px 6px rgba(79, 70, 229, 0.3);
+    }
+    .remote-card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 16px;
+      transition: all 0.2s ease;
+    }
+    .remote-card:hover {
+      border-color: var(--primary);
+      box-shadow: 0 4px 16px -4px rgba(79, 70, 229, 0.15);
+    }
+    .status-online {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      color: #10B981;
+      font-size: 11px;
+      font-weight: 700;
+    }
+    .status-online::before {
+      content: '';
+      width: 8px;
+      height: 8px;
+      background: #10B981;
+      border-radius: 50%;
+      box-shadow: 0 0 0 2px rgba(16, 185, 129, 0.2);
+    }
+    .status-offline {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      color: #94A3B8;
+      font-size: 11px;
+      font-weight: 600;
+    }
+    .status-offline::before {
+      content: '';
+      width: 8px;
+      height: 8px;
+      background: #94A3B8;
+      border-radius: 50%;
+    }
+    .quick-stat-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 16px;
+      margin-bottom: 20px;
+    }
+  </style>
 </head>
 <body>
-  <!-- SIDEBAR -->
+
+  <!-- SIDEBAR: COMMAND CENTER -->
   <aside class="sidebar">
     <div class="sidebar-logo">
-      <div class="sidebar-logo-icon">AF</div>
+      <div class="sidebar-logo-icon" style="background: linear-gradient(135deg, #4F46E5, #7C3AED);">👑</div>
       <div class="sidebar-logo-text">
         <h2>Auto Fill Order</h2>
-        <p>VNPost / J&T Assistant</p>
+        <p>Shop Owner Command Center</p>
       </div>
     </div>
+
     <nav class="nav-menu">
-      <button class="nav-item active" data-tab="submitted">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2 11 13"/><path d="m22 2-7 20-4-9-9-4z"/></svg>
-        <span>Đơn hàng đã lên đơn</span>
+      <button class="nav-item active" data-tab="dashboard">
+        <i class="ph ph-chart-line-up text-lg"></i>
+        <span>📊 Dashboard Doanh Thu</span>
       </button>
+
       <button class="nav-item" data-tab="orders">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><rect x="8" y="2" width="8" height="4" rx="1"/><path d="M9 14l2 2 4-4"/></svg>
-        <span>Đơn nháp</span>
+        <i class="ph ph-paper-plane-tilt text-lg"></i>
+        <span>📦 Đơn Hàng Bưu Điện</span>
       </button>
-      <button class="nav-item" data-tab="customers">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
-        <span>Quản lý khách hàng</span>
-      </button>
+
       <button class="nav-item" data-tab="shops">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
-        <span>Quản lý Shop</span>
+        <i class="ph ph-storefront text-lg"></i>
+        <span>🏪 Cửa Hàng & Kho Hàng</span>
       </button>
-      <button class="nav-item" data-tab="analytics">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="9"/><rect x="14" y="3" width="7" height="5"/><rect x="14" y="12" width="7" height="9"/><rect x="3" y="16" width="7" height="5"/></svg>
-        <span>Thống kê báo cáo</span>
+
+      <button class="nav-item" data-tab="staff">
+        <i class="ph ph-users-three text-lg"></i>
+        <span>👥 Nhân Viên & Phân Quyền</span>
       </button>
-      <button class="nav-item" data-tab="settings">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M12 1v2"/><path d="M12 21v2"/><path d="M4.22 4.22l1.42 1.42"/><path d="M18.36 18.36l1.42 1.42"/><path d="M1 12h2"/><path d="M21 12h2"/><path d="M4.22 19.78l1.42-1.42"/><path d="M18.36 5.64l1.42-1.42"/></svg>
-        <span>Cài đặt hệ thống</span>
-      </button>
+
       <button class="nav-item" data-tab="devices">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
-        <span>Quản lý máy tính</span>
+        <i class="ph ph-device-mobile text-lg"></i>
+        <span>📱 Giám Sát Extension (Fleet)</span>
       </button>
-      <button class="nav-item" data-tab="history">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-        <span>Lịch sử tách đơn</span>
+
+      <button class="nav-item" data-tab="panel-config">
+        <i class="ph ph-sliders-horizontal text-lg"></i>
+        <span>⚙️ Cấu Hình Panel & AI Từ Xa</span>
       </button>
-      <button class="nav-item" data-tab="address">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-12a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
-        <span>Địa chỉ & Bản đồ</span>
+
+      <button class="nav-item" data-tab="customers">
+        <i class="ph ph-address-book text-lg"></i>
+        <span>📇 Khách Hàng & Blacklist</span>
       </button>
-      <button class="nav-item" data-tab="bulk">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-        <span>Tách đơn hàng loạt</span>
-      </button>
-      <button class="nav-item" data-tab="logs">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
-        <span>Nhật ký lỗi</span>
+
+      <button class="nav-item" data-tab="account">
+        <i class="ph ph-shield-check text-lg"></i>
+        <span>🛡️ Tài Khoản Chủ Shop</span>
       </button>
     </nav>
+
     <div class="sidebar-footer">
-      <a href="/admin" class="side-link" style="display:flex;align-items:center;gap:8px;padding:8px 12px;border-radius:8px;font-size:12px;font-weight:700;color:#6366f1;background:rgba(99,102,241,0.08);text-decoration:none;margin-bottom:8px;">
+      <a href="/admin" class="side-link" style="display:flex;align-items:center;gap:8px;padding:8px 12px;border-radius:8px;font-size:12px;font-weight:700;color:#6366f1;background:rgba(99,102,241,0.08);text-decoration:none;margin-bottom:8px;" title="Chuyển sang Quản Trị Hệ Thống">
         <span>👑 Master Admin Portal</span>
       </a>
-      <div class="illust-box">
-        <svg viewBox="0 0 80 56" fill="none"><rect x="10" y="4" width="60" height="36" rx="4" stroke="#4f46e5" stroke-width="1.5"/><rect x="20" y="12" width="12" height="8" rx="2" fill="#A5B4FC"/><rect x="36" y="12" width="12" height="8" rx="2" fill="#A5B4FC"/><rect x="20" y="24" width="28" height="4" rx="2" fill="#C7D2FE"/><circle cx="22" cy="44" r="4" fill="#E0E7FF" stroke="#4f46e5" stroke-width="1"/><circle cx="58" cy="44" r="4" fill="#E0E7FF" stroke="#4f46e5" stroke-width="1"/><rect x="14" y="36" width="10" height="4" rx="1" fill="#A5B4FC"/><rect x="56" y="36" width="10" height="4" rx="1" fill="#A5B4FC"/><line x1="26" y1="44" x2="54" y2="44" stroke="#6366f1" stroke-width="1.5" stroke-dasharray="2 2"/></svg>
-        <p>VNPost  J&T Express</p>
-      </div>
+      <button id="btnSidebarLogout" class="side-link" style="color:#EF4444; border:none; background:transparent; width:100%; cursor:pointer;">
+        <i class="ph ph-sign-out text-base"></i> Đăng xuất
+      </button>
     </div>
   </aside>
 
-  <!-- MAIN -->
+  <!-- CONTENT WRAPPER -->
   <div class="content-wrapper">
+
+    <!-- TOPBAR -->
     <header class="topbar">
-      <h1 class="topbar-title">Auto Fill Order</h1>
+      <div style="display:flex; align-items:center; gap:12px;">
+        <h1 class="topbar-title">SHOP OWNER SUITE</h1>
+        <span class="owner-badge">SUPER OWNER</span>
+      </div>
+
       <div class="topbar-right">
-        <a href="/admin" class="btn btn-primary" style="display:inline-flex;align-items:center;gap:6px;background:#6366f1;color:#fff;font-weight:700;font-size:12px;padding:6px 14px;border-radius:8px;text-decoration:none;box-shadow:0 2px 6px rgba(99,102,241,0.3);margin-right:10px;" title="Mở Master Admin Portal">
+        <!-- Active Shop Selector -->
+        <div style="display:flex; align-items:center; gap:6px; background:var(--card); padding:4px 10px; border-radius:8px; border:1px solid var(--border);">
+          <span style="font-size:11px; font-weight:700; color:var(--text-s);">🏪 Shop:</span>
+          <select id="topbarShopSelect" style="border:none; background:transparent; font-size:12px; font-weight:700; color:var(--primary); outline:none; cursor:pointer;">
+            <option value="all">🌐 Toàn bộ Chi nhánh</option>
+            <option value="shop-sg-01" selected>Kho Bonsai SG (Chi nhánh 1)</option>
+            <option value="shop-hn-02">Kho Phụ Kiện Hà Nội (Chi nhánh 2)</option>
+          </select>
+        </div>
+
+        <a href="/admin" class="btn btn-primary" style="display:inline-flex;align-items:center;gap:6px;background:#6366f1;color:#fff;font-weight:700;font-size:12px;padding:6px 14px;border-radius:8px;text-decoration:none;box-shadow:0 2px 6px rgba(99,102,241,0.3);" title="Mở Master Admin Portal">
           <span>👑 Master Admin</span>
         </a>
-        <div style="display:flex;align-items:center;gap:6px;background:var(--card);border:1px solid var(--border);border-radius:8px;padding:3px 10px;margin-right:12px">
-          <span style="font-size:12px;font-weight:600;color:var(--primary)"> Shop:</span>
-          <select id="topbarShopSelect" style="font-size:12px;font-weight:600;background:none;border:none;color:var(--text-p);outline:none;cursor:pointer"></select>
-        </div>
-        <div id="btnDraftsBell" class="bell-notification" style="position:relative; cursor:pointer; margin-right: 12px; display:flex; align-items:center; color: var(--text-p);" title="Xem Đơn nháp">
-          <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg>
-          <span id="draftsBadge" style="position:absolute; top:-6px; right:-8px; background:var(--primary); color:white; font-size:10px; font-weight:bold; padding:2px 6px; border-radius:10px; display:none;">0</span>
-        </div>
-        <!-- User Profile Pill & Dropdown -->
-        <div class="user-profile-wrapper" style="position:relative">
-          <div id="topbarUserProfilePill" class="user-profile-pill" title="Bấm để Quản lý tài khoản">
-            <div class="avatar" id="topbarAvatar">AF</div>
-            <div class="user-pill-info">
-              <span id="topbarUserLabel" class="user-pill-name">Chưa đăng nhập</span>
-              <span id="topbarUserRoleLabel" class="user-pill-role">Khách</span>
-            </div>
-            <svg class="user-pill-caret" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
-          </div>
 
-          <!-- Dropdown Menu -->
-          <div id="userProfileDropdown" class="user-profile-dropdown">
-            <div class="dropdown-header">
-              <div class="avatar avatar-lg" id="dropdownAvatar">AF</div>
-              <div class="dropdown-user-details">
-                <div id="dropdownUserName" class="dropdown-user-name">Chưa đăng nhập</div>
-                <div id="dropdownUserEmail" class="dropdown-user-email">—</div>
-                <span id="dropdownRoleBadge" class="dropdown-role-badge">Người dùng</span>
-              </div>
-            </div>
+        <!-- Dark mode toggle -->
+        <button id="btnToggleTheme" class="btn btn-secondary" title="Chuyển chế độ Sáng/Tối">
+          <i id="themeIcon" class="ph ph-sun text-base"></i>
+        </button>
 
-            <div class="dropdown-divider"></div>
-
-            <div class="dropdown-section">
-              <div class="dropdown-label">Cửa hàng đang chọn</div>
-              <div class="dropdown-shop-row">
-                <span id="dropdownShopName" class="dropdown-shop-name">Shop Mặc định</span>
-              </div>
-            </div>
-
-            <div class="dropdown-divider"></div>
-
-            <div class="dropdown-menu-list">
-              <button id="btnDropdownAccount" class="dropdown-item">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
-                <span>Quản lý Tài khoản & Hồ sơ</span>
-              </button>
-              <button id="btnDropdownChangePassword" class="dropdown-item">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
-                <span>Đổi mật khẩu</span>
-              </button>
-              <a href="../../admin-dashboard/index.html" id="btnDropdownAdminPortal" class="dropdown-item" style="display:none">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
-                <span>Trang Quản trị Admin ↗</span>
-              </a>
-              <button id="btnDropdownDevices" class="dropdown-item">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
-                <span>Quản lý Máy tính</span>
-              </button>
-            </div>
-
-            <div class="dropdown-divider"></div>
-
-            <div class="dropdown-footer">
-              <button id="btnDropdownLogout" class="dropdown-item text-danger">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
-                <span>Đăng xuất tài khoản</span>
-              </button>
-            </div>
+        <!-- User Profile Pill -->
+        <div class="user-profile-pill" id="topbarUserPill">
+          <div class="avatar" style="background:#4F46E5; color:#fff;">AF</div>
+          <div class="user-pill-info">
+            <span class="user-pill-name" id="topbarUserName">Chủ Shop</span>
+            <span class="user-pill-role" style="color:#4F46E5; font-weight:700;">Super Owner</span>
           </div>
         </div>
-        <span id="topbarDeviceName" style="font-size:12px;font-weight:500;color:var(--text-s);max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"></span>
       </div>
     </header>
+
+    <!-- CONTENT BODY -->
     <main class="content">
 
-    <!-- TAB: Quản lý Đơn nháp -->
-    <div id="tab-orders" class="tab-content">
-      <div class="page-hdr">
-        <h1>Quản lý Đơn nháp</h1>
-        <p>Lưu trữ và theo dõi các đơn hàng nháp bóc tách từ Panel trước khi đăng đơn.</p>
-      </div>
-
-      <div class="stats-grid">
-        <div class="stat-card">
-          <div class="stat-icon orders">
-            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m7.5 4.27 9 5.15"/><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="m3.3 7 8.7 5 8.7-5"/><path d="M12 22V12"/></svg>
-          </div>
-          <div class="stat-info">
-            <span class="stat-label">Tổng đơn hàng nháp</span>
-            <span id="stat-total-orders" class="stat-value">0</span>
-          </div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-icon cod">
-            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="20" height="12" x="2" y="6" rx="2"/><circle cx="12" cy="12" r="2"/><path d="M6 12h.01M18 12h.01"/></svg>
-          </div>
-          <div class="stat-info">
-            <span class="stat-label">Tổng tiền thu hộ (COD)</span>
-            <span id="stat-total-cod" class="stat-value">0đ</span>
-          </div>
-        </div>
-      </div>
-
-      <div class="data-card">
-        <div class="controls-bar">
-          <div class="search-filters">
-            <div style="position:relative; display:flex; align-items:center;">
-              <input type="text" id="searchInp" placeholder="Tìm tên, SĐT, mã đơn..." style="padding-right:24px;">
-              <button id="searchClearOrders" style="position:absolute; right:6px; background:none; border:none; cursor:pointer; color:var(--text-s); display:none; padding:4px;" title="Xóa tìm kiếm">
-                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
-              </button>
-            </div>
-            <select id="filterPlatform">
-              <option value="">-- Tất cả ĐVVC --</option>
-              <option value="vnpost">VNPost</option>
-              <option value="jt">J&T Express</option>
-            </select>
-            <select id="filterDevice">
-              <option value="">-- Tất cả máy --</option>
-            </select>
-            <button id="btnFilterToday" class="btn btn-secondary btn-sm">Hôm nay</button>
-            <button id="btnFilter7Days" class="btn btn-secondary btn-sm">7 ngày</button>
-            <button id="btnFilter30Days" class="btn btn-secondary btn-sm">30 ngày</button>
-            <button id="btnFilterThisMonth" class="btn btn-secondary btn-sm">Tháng này</button>
-            <button id="btnClearFilters" class="btn btn-secondary btn-sm">Xóa lọc</button>
-          </div>
-          <div style="display:flex;gap:8px;flex-shrink:0">
-            <button id="btnOpenAddModal" class="btn btn-primary">+ Tạo đơn mới</button>
-            <button id="btnBulkDelete" class="btn btn-danger" style="display:none">Xóa (<span id="selectedCount">0</span>)</button>
-          </div>
-        </div>
-
-        <div class="table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th style="width:40px;text-align:center"><input type="checkbox" id="selectAllOrders"></th>
-                <th style="width:180px">Khách hàng</th>
-                <th>Địa chỉ chi tiết</th>
-                <th style="width:110px">Mã đơn</th>
-                <th style="width:120px;text-align:right">Thu hộ COD</th>
-                <th style="width:80px;text-align:center">Thu cước</th>
-                <th style="width:130px">ĐVVC</th>
-                <th style="width:110px">Máy</th>
-                <th style="width:140px">Ngày tạo</th>
-                <th style="width:180px;min-width:180px;text-align:center">Thao tác</th>
-              </tr>
-            </thead>
-            <tbody id="ordersList"></tbody>
-          </table>
-          <div id="ordersLoading" class="orders-loading" style="display:none">
-            <div class="loading-spinner"></div>
-            <div>
-              <strong>Đang tải danh sách đơn nháp...</strong>
-              <p style="font-size:12px;color:var(--text-s);margin-top:4px">Đang nạp dữ liệu đơn hàng từ bộ nhớ cục bộ & đám mây</p>
-            </div>
-          </div>
-          <div id="emptyState" class="orders-empty" style="display:none">
-            <p><strong>Chưa có đơn hàng nháp nào</strong></p>
-            <p style="font-size:12px;margin-top:4px">Bóc tách đơn hàng từ Panel hoặc bấm "+ Tạo đơn mới" để thêm.</p>
-          </div>
-        </div>
-        <div class="pagination-bar" id="ordersPagination" style="display:none">
-          <div class="pagination-info">
-            <span id="ordersPageInfo">Trang 1 / 1</span>
-            <span id="ordersTotalLabel">(0 đơn)</span>
-          </div>
-          <div class="pagination-controls" style="display:flex;align-items:center;gap:8px">
-            <span style="font-size:12px;color:var(--text-s)">
-              Hiển thị
-              <select id="ordersPerPage" style="font-size:12px;padding:3px 6px;border:1px solid var(--border);border-radius:6px">
-                <option value="10">10</option>
-                <option value="20" selected>20</option>
-                <option value="50">50</option>
-              </select>
-              đơn / trang
-            </span>
-            <button class="btn btn-secondary btn-sm" id="ordersPrevBtn">Trước</button>
-            <div id="ordersPageNumbers" class="page-numbers"></div>
-            <button class="btn btn-secondary btn-sm" id="ordersNextBtn">Sau</button>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- TAB: Quản lý Khách hàng -->
-    <div id="tab-customers" class="tab-content">
-      <div class="page-hdr">
-        <h1>Quản lý Khách hàng</h1>
-        <p>Danh sách thông tin khách hàng, lịch sử mua hàng và ghi chú giao hàng.</p>
-      </div>
-
-      <div class="stats-grid">
-        <div class="stat-card">
-          <div class="stat-icon orders">
-            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
-          </div>
-          <div class="stat-info">
-            <span class="stat-label">Tổng số khách hàng</span>
-            <span id="stat-total-customers" class="stat-value">0</span>
-          </div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-icon cod">
-            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
-          </div>
-          <div class="stat-info">
-            <span class="stat-label">Khách hàng Thân thiết</span>
-            <span id="stat-vip-customers" class="stat-value">0</span>
-          </div>
-        </div>
-      </div>
-
-      <div class="data-card">
-        <div class="controls-bar">
-          <div class="search-filters">
-            <div style="position:relative; display:flex; align-items:center;">
-              <input type="text" id="customerSearch" placeholder="Tìm tên, SĐT khách hàng..." style="padding-right:24px;">
-              <button id="searchClearCustomers" style="position:absolute; right:6px; background:none; border:none; cursor:pointer; color:var(--text-s); display:none; padding:4px;" title="Xóa tìm kiếm">
-                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
-              </button>
-            </div>
-            <select id="filterCustomerSegment">
-              <option value="">-- Tất cả phân loại --</option>
-              <option value="new">Khách hàng Mới</option>
-              <option value="regular">Thường xuyên</option>
-              <option value="vip">VIP</option>
-              <option value="blacklist">Cảnh báo / Nợ</option>
-            </select>
-            <select id="filterCustomerCarrier">
-              <option value="">-- Tất cả ĐVVC --</option>
-              <option value="vnpost">VNPost</option>
-              <option value="jt">J&T Express</option>
-            </select>
-            <button id="btnClearCustomerFilters" class="btn btn-secondary btn-sm">Xóa lọc</button>
-          </div>
-        </div>
-
-        <div class="table-wrap">
-          <table id="customersTable">
-            <thead>
-              <tr>
-                <th style="width:180px">Tên Khách hàng</th>
-                <th style="width:130px">Số điện thoại</th>
-                <th>Địa chỉ mới nhất</th>
-                <th style="width:100px;text-align:center">Tổng đơn</th>
-                <th style="width:130px;text-align:right">Tổng COD</th>
-                <th style="width:140px">Lần mua cuối</th>
-                <th style="width:100px;text-align:center">Thao tác</th>
-              </tr>
-            </thead>
-            <tbody id="customersList"></tbody>
-          </table>
-          <div id="customersEmpty" class="orders-empty" style="display:none">
-            <p><strong>Chưa có thông tin khách hàng nào</strong></p>
-            <p style="font-size:12px;margin-top:4px">Khách hàng sẽ tự động tích lũy khi bạn tạo hoặc bóc tách đơn hàng.</p>
-          </div>
-        </div>
-        <div class="pagination-bar" id="customersPagination" style="display:none">
-          <div class="pagination-info">
-            <span id="customersTotalLabel">(0 khách hàng)</span>
-          </div>
-          <div class="pagination-controls" style="display:flex;align-items:center;gap:8px">
-            <span style="font-size:12px;color:var(--text-s)">
-              Hiển thị
-              <select id="customersPerPage" style="font-size:12px;padding:3px 6px;border:1px solid var(--border);border-radius:6px">
-                <option value="10">10</option>
-                <option value="20" selected>20</option>
-                <option value="50">50</option>
-              </select>
-              khách / trang
-            </span>
-            <button class="btn btn-secondary btn-sm" id="customersPrevBtn">Trước</button>
-            <div id="customersPageNumbers" class="page-numbers"></div>
-            <button class="btn btn-secondary btn-sm" id="customersNextBtn">Sau</button>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- TAB: Quản lý Shop -->
-    <div id="tab-shops" class="tab-content">
-      <div class="page-hdr">
-        <h1>Quản lý Cửa hàng (Shop)</h1>
-        <p>Cấu hình và quản lý thông tin các shop thuộc tài khoản của bạn.</p>
-      </div>
-      <div class="data-card" style="padding:24px;text-align:center">
-        <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#3C7363" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="margin-bottom:12px"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
-        <h3 style="font-size:16px;font-weight:700;color:var(--text-p);margin-bottom:8px">Quản lý danh sách Shop</h3>
-        <p style="font-size:13px;color:var(--text-s);max-width:500px;margin:0 auto 16px">Bạn có thể quản lý danh sách Cửa hàng chi tiết và phân quyền nhân viên trên Trang Quản trị (Admin Dashboard).</p>
-        <a href="../../admin-dashboard/index.html" class="btn btn-primary" style="display:inline-flex;align-items:center;gap:6px;padding:9px 18px">Mở Trang Quản Trị Admin ↗</a>
-      </div>
-    </div>
-
-    <!-- TAB: Thống kê báo cáo -->
-    <div id="tab-analytics" class="tab-content">
-      <div class="page-hdr">
-        <h1>Thống kê & Báo cáo</h1>
-        <p>Báo cáo tổng quan số lượng đơn hàng, doanh số COD và tỷ lệ bóc tách thành công.</p>
-      </div>
-
-      <div class="stats-grid" style="margin-bottom:20px;grid-template-columns:repeat(auto-fit, minmax(220px, 1fr));gap:16px">
-        <div class="stat-card">
-          <div class="stat-icon orders">
-            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
-          </div>
-          <div class="stat-info">
-            <span class="stat-label">Tổng đơn tháng này</span>
-            <span id="stat-analytics-month-total" class="stat-value">0</span>
-          </div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-icon cod">
-            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="20" height="12" x="2" y="6" rx="2"/><circle cx="12" cy="12" r="2"/><path d="M6 12h.01M18 12h.01"/></svg>
-          </div>
-          <div class="stat-info">
-            <span class="stat-label">Tổng COD tháng này</span>
-            <span id="stat-analytics-month-cod" class="stat-value">0đ</span>
-          </div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-icon" style="background:#e0f2fe;color:#0369a1">
-            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
-          </div>
-          <div class="stat-info">
-            <span class="stat-label">Đơn VNPost</span>
-            <span id="stat-analytics-vnpost-count" class="stat-value">0</span>
-          </div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-icon" style="background:#fef3c7;color:#b45309">
-            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="16" height="16" x="4" y="4" rx="2"/><rect width="8" height="8" x="8" y="8" rx="1"/></svg>
-          </div>
-          <div class="stat-info">
-            <span class="stat-label">Đơn J&T Express</span>
-            <span id="stat-analytics-jt-count" class="stat-value">0</span>
-          </div>
-        </div>
-      </div>
-
-      <!-- Carrier & Status Distribution -->
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-bottom:20px">
-        <div class="data-card" style="padding:20px">
-          <h3 style="font-size:14px;font-weight:700;color:var(--text-p);margin-bottom:14px;display:flex;align-items:center;gap:8px">
-            🚚 Tỷ lệ Nhà vận chuyển
-          </h3>
-          <div style="display:flex;flex-direction:column;gap:12px">
-            <div>
-              <div style="display:flex;justify-content:space-between;font-size:12px;font-weight:600;margin-bottom:4px">
-                <span>VNPost</span>
-                <span id="analyticsVnpostPercent">0% (0 đơn)</span>
-              </div>
-              <div style="height:10px;background:#f1f5f9;border-radius:6px;overflow:hidden">
-                <div id="analyticsVnpostBar" style="height:100%;width:0%;background:#0284c7;border-radius:6px;transition:width 0.5s ease"></div>
-              </div>
-            </div>
-            <div>
-              <div style="display:flex;justify-content:space-between;font-size:12px;font-weight:600;margin-bottom:4px">
-                <span>J&T Express</span>
-                <span id="analyticsJtPercent">0% (0 đơn)</span>
-              </div>
-              <div style="height:10px;background:#f1f5f9;border-radius:6px;overflow:hidden">
-                <div id="analyticsJtBar" style="height:100%;width:0%;background:#d97706;border-radius:6px;transition:width 0.5s ease"></div>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div class="data-card" style="padding:20px">
-          <h3 style="font-size:14px;font-weight:700;color:var(--text-p);margin-bottom:14px;display:flex;align-items:center;gap:8px">
-            📌 Trạng thái Đơn hàng
-          </h3>
-          <div style="display:flex;flex-direction:column;gap:12px">
-            <div>
-              <div style="display:flex;justify-content:space-between;font-size:12px;font-weight:600;margin-bottom:4px">
-                <span>Đơn hàng đã lên đơn</span>
-                <span id="analyticsSubmittedPercent">0% (0 đơn)</span>
-              </div>
-              <div style="height:10px;background:#f1f5f9;border-radius:6px;overflow:hidden">
-                <div id="analyticsSubmittedBar" style="height:100%;width:0%;background:#3C7363;border-radius:6px;transition:width 0.5s ease"></div>
-              </div>
-            </div>
-            <div>
-              <div style="display:flex;justify-content:space-between;font-size:12px;font-weight:600;margin-bottom:4px">
-                <span>Đơn nháp lưu trữ</span>
-                <span id="analyticsDraftsPercent">0% (0 đơn)</span>
-              </div>
-              <div style="height:10px;background:#f1f5f9;border-radius:6px;overflow:hidden">
-                <div id="analyticsDraftsBar" style="height:100%;width:0%;background:#64748b;border-radius:6px;transition:width 0.5s ease"></div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <div class="data-card" style="padding:20px">
-        <h3 style="font-size:14px;font-weight:700;color:var(--text-p);margin-bottom:12px">
-          📈 Tổng quan hiệu suất bóc tách AI & Tự động hóa
-        </h3>
-        <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(200px, 1fr));gap:12px;text-align:center">
-          <div style="background:#f8fafc;border:1px solid var(--border);border-radius:10px;padding:12px">
-            <div style="font-size:11px;color:var(--text-s);font-weight:600">Tỷ lệ bóc tách thành công</div>
-            <div style="font-size:20px;font-weight:800;color:#3C7363;margin-top:4px">99.4%</div>
-          </div>
-          <div style="background:#f8fafc;border:1px solid var(--border);border-radius:10px;padding:12px">
-            <div style="font-size:11px;color:var(--text-s);font-weight:600">Thời gian bóc tách trung bình</div>
-            <div style="font-size:20px;font-weight:800;color:#2563eb;margin-top:4px">0.8 Giây</div>
-          </div>
-          <div style="background:#f8fafc;border:1px solid var(--border);border-radius:10px;padding:12px">
-            <div style="font-size:11px;color:var(--text-s);font-weight:600">Tiết kiệm thời gian trung bình</div>
-            <div style="font-size:20px;font-weight:800;color:#d97706;margin-top:4px">45 Giây / Đơn</div>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- TAB: Đơn hàng đã lên đơn -->
-    <div id="tab-submitted" class="tab-content active">
-      <div class="page-hdr">
-        <h1>Đơn hàng đã lên đơn</h1>
-        <p>Danh sách đơn hàng đã thực sự gửi lên VNPost / J&T Express.</p>
-      </div>
-
-      <div class="stats-grid">
-        <div class="stat-card">
-          <div class="stat-icon orders">
-            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2 11 13"/><path d="m22 2-7 20-4-9-9-4z"/></svg>
-          </div>
-          <div class="stat-info">
-            <span class="stat-label">Tổng đơn đã lên đơn</span>
-            <span id="stat-submitted-total" class="stat-value">0</span>
-          </div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-icon cod">
-            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="20" height="12" x="2" y="6" rx="2"/><circle cx="12" cy="12" r="2"/><path d="M6 12h.01M18 12h.01"/></svg>
-          </div>
-          <div class="stat-info">
-            <span class="stat-label">Tổng COD đã lên đơn</span>
-            <span id="stat-submitted-cod" class="stat-value">0đ</span>
-          </div>
-        </div>
-      </div>
-
-      <div class="data-card">
-        <div class="controls-bar">
-          <div class="search-filters">
-            <div style="position:relative; display:flex; align-items:center;">
-              <input type="text" id="submittedSearchInp" placeholder="Tìm tên, SĐT, Mã đơn..." style="padding-right:24px;">
-              <button id="submittedSearchClear" style="position:absolute; right:6px; background:none; border:none; cursor:pointer; color:var(--text-s); display:none; padding:4px;" title="Xóa tìm kiếm">
-                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
-              </button>
-            </div>
-            <select id="submittedFilterPlatform">
-              <option value="">-- Tất Cả ĐVVC --</option>
-              <option value="vnpost">VNPost</option>
-              <option value="jt">J&T Express</option>
-            </select>
-            <select id="submittedFilterDevice">
-              <option value="">-- Tất Cả Máy --</option>
-            </select>
-            <div class="date-filter-group">
-              <label for="submittedFilterFrom">Từ</label>
-              <input type="date" id="submittedFilterFrom">
-              <label for="submittedFilterTo">Đến</label>
-              <input type="date" id="submittedFilterTo">
-            </div>
-            <button id="submittedBtnToday" class="btn btn-secondary btn-sm">Hôm nay</button>
-            <button id="submittedBtn7Days" class="btn btn-secondary btn-sm">7 ngày</button>
-            <button id="submittedBtn30Days" class="btn btn-secondary btn-sm">30 ngày</button>
-            <button id="submittedBtnThisMonth" class="btn btn-secondary btn-sm">Tháng này</button>
-            <button id="submittedBtnClearFilters" class="btn btn-secondary btn-sm"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:4px"><path d="m3 3 18 18"/><path d="m15 9-6 6"/><path d="M10 5.3V4a2 2 0 0 1 2-2h0a2 2 0 0 1 2 2v1.3"/><path d="M14 14v5a2 2 0 0 1-2 2h0a2 2 0 0 1-2-2v-5"/></svg> Xóa lọc</button>
-          </div>
-          <div style="display:flex;gap:8px;flex-shrink:0">
-            <button id="submittedBtnBulkDelete" class="btn btn-danger" style="display:none"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:4px"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/><line x1="10" x2="10" y1="11" y2="17"/><line x1="14" x2="14" y1="11" y2="17"/></svg> Xóa (<span id="submittedSelectedCount">0</span>)</button>
-          </div>
-        </div>
-
-        <div class="table-wrap">
-          <table id="submittedTable">
-            <thead>
-              <tr>
-                <th style="width:40px;text-align:center"><input type="checkbox" id="submittedSelectAll"></th>
-                <th style="width:180px">Khách hàng</th>
-                <th>Địa chỉ Chi tiếtết</th>
-                <th style="width:110px">Mã đơn</th>
-                <th style="width:130px">Mã vận đơn</th>
-                <th style="width:120px;text-align:right">Thu hộ COD</th>
-                <th style="width:80px;text-align:center">Thu cước</th>
-                <th style="width:130px">ĐVVC</th>
-                <th style="width:110px">Máy</th>
-                <th style="width:140px">ngày gửi đơn</th>
-                <th style="width:180px;min-width:180px;text-align:center">Thao tác</th>
-              </tr>
-            </thead>
-            <tbody id="submittedList"></tbody>
-          </table>
-          <div id="submittedLoading" class="orders-loading">
-            <div class="loading-spinner"></div>
-            <div>
-              <strong>Đang kết nối Database & tải dữ liệu...</strong>
-              <p style="font-size:12px;color:var(--text-s);margin-top:4px">Đang đồng bộ danh sách đơn hàng đã gửi lên VNPost & J&T Express</p>
-            </div>
-          </div>
-          <div id="submittedEmpty" class="orders-empty" style="display:none">
-            <p><strong>Chưa có đơn hàng nào đã lên đơn</strong></p>
-            <p style="font-size:12px;margin-top:4px">Khi bạn bấm "Tạo đơn" trên VNPost hoặc "Đăng đơn" trên J&T, đơn sẽ tự động xuất hiện ở đây.</p>
-          </div>
-        </div>
-        <div class="pagination-bar" id="submittedPagination" style="display:none">
-          <div class="pagination-info">
-            <span id="submittedPageInfo">Trang 1 / 1</span>
-            <span id="submittedTotalLabel">(0 đơn)</span>
-          </div>
-          <div class="pagination-controls" style="display:flex;align-items:center;gap:8px">
-            <span style="font-size:12px;color:var(--text-s)">
-              Hiển thị
-              <select id="submittedPerPage" style="font-size:12px;padding:3px 6px;border:1px solid var(--border);border-radius:6px">
-                <option value="10">10</option>
-                <option value="20" selected>20</option>
-                <option value="50">50</option>
-              </select>
-              đơn / trang
-            </span>
-            <button class="btn btn-secondary btn-sm" id="submittedPrevBtn"> Trước</button>
-            <div id="submittedPageNumbers" class="page-numbers"></div>
-            <button class="btn btn-secondary btn-sm" id="submittedNextBtn">Sau </button>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- TAB: Quản lý Khách hàng -->
-    <!-- TAB: Quản lý Shop / Cửa hàng -->
-    <!-- TAB: Tài khoản & Cài đặt chuẩn CMS -->
-    <div id="tab-settings" class="tab-content">
-      <div class="page-hdr">
-        <h1>Tài khoản & Cài đặt Hệ thống</h1>
-        <p>Quản lý thông tin tài khoản, bảo mật, đồng bộ dữ liệu đám mây và cấu hình mô hình AI.</p>
-      </div>
-
-      <!-- CMS Sub-Navigation Tabs Header -->
-      <div class="cms-subnav" style="display:flex;gap:8px;margin-bottom:20px;border-bottom:1px solid var(--border);padding-bottom:12px;overflow-x:auto">
-        <button class="cms-subnav-btn active" data-subtab="all" style="padding:8px 14px;border-radius:20px;font-size:12.5px;font-weight:600;border:1px solid var(--primary);background:var(--primary);color:#fff;cursor:pointer;transition:all 0.2s">⚡ Tất cả Cài đặt</button>
-        <button class="cms-subnav-btn" data-subtab="profile" style="padding:8px 14px;border-radius:20px;font-size:12.5px;font-weight:600;border:1px solid var(--border);background:var(--bg-card);color:var(--text-p);cursor:pointer;transition:all 0.2s">👤 Hồ sơ</button>
-        <button class="cms-subnav-btn" data-subtab="security" style="padding:8px 14px;border-radius:20px;font-size:12.5px;font-weight:600;border:1px solid var(--border);background:var(--bg-card);color:var(--text-p);cursor:pointer;transition:all 0.2s">🔒 Bảo mật</button>
-        <button class="cms-subnav-btn" data-subtab="cloud" style="padding:8px 14px;border-radius:20px;font-size:12.5px;font-weight:600;border:1px solid var(--border);background:var(--bg-card);color:var(--text-p);cursor:pointer;transition:all 0.2s">☁️ Đồng bộ Cloud</button>
-        <button class="cms-subnav-btn" data-subtab="api" style="padding:8px 14px;border-radius:20px;font-size:12.5px;font-weight:600;border:1px solid var(--border);background:var(--bg-card);color:var(--text-p);cursor:pointer;transition:all 0.2s">🤖 AI & API</button>
-        <button class="cms-subnav-btn" data-subtab="blacklist" style="padding:8px 14px;border-radius:20px;font-size:12.5px;font-weight:600;border:1px solid var(--border);background:var(--bg-card);color:var(--text-p);cursor:pointer;transition:all 0.2s">🚫 Danh sách đen</button>
-        <button class="cms-subnav-btn" data-subtab="backup" style="padding:8px 14px;border-radius:20px;font-size:12.5px;font-weight:600;border:1px solid var(--border);background:var(--bg-card);color:var(--text-p);cursor:pointer;transition:all 0.2s">💾 Sao lưu</button>
-      </div>
-
-      <!-- ─── PROFILE CARD ─── -->
-      <div id="panel-subtab-profile" class="acc-card acc-profile settings-section-card">
-        <div class="acc-profile-main">
-          <div class="acc-avatar" id="accAvatar">AF</div>
-          <div class="acc-info">
-            <div class="acc-name-row">
-              <span class="acc-name" id="accDisplayName">Loading...</span>
-              <span class="acc-badge" id="accRoleBadge">Người dùng</span>
-            </div>
-            <div class="acc-email" id="accDisplayEmail"></div>
-            <div class="acc-meta">
-              <span>Cửa hàng: <strong id="accDisplayShop">—</strong></span>
-              <span>Ngày tham gia: <strong id="accDisplayMemberSince">—</strong></span>
-            </div>
-          </div>
-          <div style="display:flex;align-items:center;gap:8px;margin-left:auto;flex-wrap:wrap">
-            <button class="acc-edit-btn" id="accEditProfileBtn">✏️ Chỉnh sửa hồ sơ</button>
-            <button class="btn btn-secondary btn-sm" id="btnRefreshPermissions" style="padding:6px 12px;font-size:12px">🔄 Làm mới quyền</button>
-            <button class="btn btn-secondary btn-sm" id="btnOpenLoginModal" style="padding:6px 12px;font-size:12px">🔑 Đăng nhập / Chuyển tài khoản</button>
-            <button class="btn btn-danger btn-sm" id="btnProfileLogout" style="padding:6px 12px;font-size:12px">🚪 Đăng xuất</button>
-          </div>
-        </div>
-      </div>
-
-      <!-- ─── SECURITY ─── -->
-      <div id="panel-subtab-security" class="acc-card settings-section-card" style="margin-top:20px">
-        <div class="acc-card-hdr">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
-          <span>Đổi mật khẩu tài khoản</span>
-        </div>
-        <div class="acc-pw-grid">
-          <div class="af-group">
-            <label class="af-label" for="txtNewPassword">Mật khẩu Mới</label>
-            <input class="af-input" type="password" id="txtNewPassword" placeholder="Nhập mật khẩu mới (tối thiểu 6 ký tự)">
-          </div>
-          <div class="af-group">
-            <label class="af-label" for="txtConfirmNewPassword">Xác nhận Mật khẩu Mới</label>
-            <input class="af-input" type="password" id="txtConfirmNewPassword" placeholder="Xác nhận lại mật khẩu mới">
-          </div>
-          <div style="display:flex;flex-direction:column;gap:6px;justify-content:flex-end">
-            <button class="af-submit" id="btnSavePasswordChange" style="padding:9px;font-size:13px">
-              <span class="af-btn-text">💾 Cập nhật Mật khẩu</span>
-              <span class="af-btn-spin">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10" stroke-dasharray="31.4 31.4" stroke-linecap="round"><animateTransform attributeName="transform" type="rotate" from="0 12 12" to="360 12 12" dur=".8s" repeatCount="indefinite"/></circle></svg>
-              </span>
-            </button>
-            <label style="display:flex;align-items:center;gap:6px;font-size:11.5px;color:#64748B;cursor:pointer">
-              <input type="checkbox" id="chkLogoutAllDevices" checked>
-              Đăng xuất khỏi tất cả thiết bị khác
-            </label>
-          </div>
-        </div>
-      </div>
-
-      <!-- ─── PROFILE EDIT MODAL ─── -->
-      <div class="acc-modal-overlay" id="accEditModal">
-        <div class="acc-modal">
-          <div class="acc-modal-hdr">
-            <h3>Chỉnh sửa hồ sơ</h3>
-            <button class="acc-modal-close" id="accEditModalClose">&times;</button>
-          </div>
-          <div class="af-group" style="margin-bottom:12px">
-            <label class="af-label" for="accEditName">Họ và tên</label>
-            <input class="af-input" type="text" id="accEditName" placeholder="Nguyễn Văn A">
-          </div>
-          <div class="af-group" style="margin-bottom:12px">
-            <label class="af-label" for="accEditPhone">Số điện thoại</label>
-            <input class="af-input" type="text" id="accEditPhone" placeholder="0912345678">
-          </div>
-          <div style="display:flex;gap:10px;justify-content:flex-end">
-            <button class="btn btn-secondary" id="accEditCancel">Hủy</button>
-            <button class="btn btn-primary" id="accEditSave">Lưu thay đổi</button>
-          </div>
-        </div>
-      </div>
-
-      <!-- ─── CLOUD ─── -->
-      <div id="panel-subtab-cloud" class="acc-card settings-section-card" style="margin-top:20px">
-        <div class="acc-card-hdr">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z"/></svg>
-          <span>Đồng bộ Đám Mây (Supabase Cloud)</span>
-        </div>
-
-        <div id="cloud-status-box" style="display:flex;align-items:center;justify-content:space-between;padding:14px 18px;background:#F8FAFC;border:1px solid #E2E8F0;border-radius:10px;margin-bottom:16px;flex-wrap:wrap;gap:10px">
-          <div style="display:flex;align-items:center;gap:10px">
-            <span id="cloud-status-dot" style="width:10px;height:10px;border-radius:50%;background:#94a3b8;flex-shrink:0"></span>
-            <div>
-              <div style="font-weight:600;font-size:13px;color:#1E293B" id="cloud-status-label">Chưa kết nối</div>
-              <div style="font-size:11px;color:#64748B;margin-top:1px" id="cloud-status-sub">Nhấn "Kết nối & Đồng bộ" để bắt đầu</div>
-              <div id="cloudDeviceIdDisplay" style="font-size:10px;color:#94A3B8;font-family:monospace;margin-top:1px;display:none"></div>
-            </div>
-          </div>
-          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-            <input type="text" id="deviceNameInput" placeholder="VD: PC Máy Kho..." style="padding:6px 10px;border:1px solid #CBD5E1;border-radius:8px;font-size:12px;outline:none;width:140px">
-            <button id="btnSaveDeviceName" class="btn btn-primary btn-sm" style="padding:6px 10px;font-size:12px">💾 Lưu tên máy</button>
-            <button id="btnOpenDeviceModal" class="btn btn-secondary btn-sm" style="padding:6px 10px;font-size:12px">💻 Chọn Máy Cũ</button>
-          </div>
-        </div>
-
-        <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(300px, 1fr));gap:14px;margin-bottom:16px">
-          <div style="padding:16px;background:#fff;border:1px solid #E2E8F0;border-radius:10px">
-            <div style="font-weight:600;font-size:12px;color:#0F172A;margin-bottom:10px">Cấu hình Thông số Supabase</div>
-            <div style="display:flex;flex-direction:column;gap:10px">
-              <input type="text" id="supabaseUrlInput" placeholder="https://abcdefg.supabase.co" style="padding:7px 10px;border:1px solid #CBD5E1;border-radius:8px;font-size:12px;outline:none;font-family:monospace">
-              <input type="text" id="supabaseKeyInput" placeholder="eyJhbGciOiJIUzI1Ni..." style="padding:7px 10px;border:1px solid #CBD5E1;border-radius:8px;font-size:12px;outline:none;font-family:monospace">
-              <div style="display:flex;align-items:center;gap:8px">
-                <button id="btnSaveSupabaseConfig" class="btn btn-primary btn-sm" style="padding:6px 12px;font-size:12px">💾 Lưu cấu hình</button>
-                <span id="supabaseConfigSaveStatus" style="font-size:11px;color:#16a34a;font-weight:600"></span>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div style="display:flex;gap:8px;flex-wrap:wrap;padding:14px;background:#F8FAFC;border:1px solid #E2E8F0;border-radius:10px;margin-bottom:16px;align-items:center">
-          <button id="btnCloudConnect" class="btn btn-primary" style="padding:8px 14px;font-weight:600;font-size:13px">🔄 Kết nối & Đồng bộ</button>
-          <button id="btnCloudSyncUp" class="btn btn-secondary" style="padding:8px 14px;font-weight:600;font-size:13px" disabled>⬆️ Đẩy lên Cloud</button>
-          <button id="btnCloudSyncDown" class="btn btn-secondary" style="padding:8px 14px;font-weight:600;font-size:13px" disabled>⬇️ Tải về máy</button>
-          <button id="btnCloudDisconnect" class="btn btn-secondary" style="padding:8px 14px;font-weight:600;font-size:13px;color:#dc2626;margin-left:auto" disabled>🔌 Ngắt kết nối</button>
-        </div>
-
-        <div style="display:none;padding:10px 14px;border-radius:8px;font-size:12px;align-items:center;gap:8px;margin-bottom:14px" id="cloud-result">
-          <span id="cloud-result-icon"></span>
-          <span id="cloud-result-msg"></span>
-        </div>
-
-        <details style="font-size:12px;color:#92400E;background:#FFFBEB;border:1px solid #FDE68A;border-radius:10px;padding:12px 16px">
-          <summary style="cursor:pointer;font-weight:600;font-size:13px;color:#B45309">⚠️ Hướng dẫn Cài đặt Supabase</summary>
-          <ol style="margin:10px 0 0 18px;display:flex;flex-direction:column;gap:5px;line-height:1.5">
-            <li>Tạo dự án Mới trên <a href="https://supabase.com/dashboard" target="_blank" style="color:#B45309;font-weight:700;text-decoration:underline">Supabase Dashboard</a>.</li>
-            <li>Vào <strong>Project Settings ➔ API</strong>, copy <code>Project URL</code> và <code>anon public key</code> dán vào ô trên, bấm <strong>"Lưu"</strong>.</li>
-            <li>Vào <strong>SQL Editor</strong>, chạy script tạo các bảng cần thiết.</li>
-            <li>Bấm <strong>"Kết nối & Đồng bộ"</strong> để hoàn tất.</li>
-          </ol>
-        </details>
-      </div>
-
-      <!-- ─── AI SETTINGS ─── -->
-      <div id="panel-subtab-api" class="acc-card settings-section-card" style="margin-top:20px">
-        <div class="acc-card-hdr">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
-          <span>AI Settings</span>
-        </div>
-        <div style="padding: 12px; font-size: 13px; color: #64748B;">
-          AI configuration is now managed via the Admin Dashboard. All AI requests go through the secure AI Gateway.
-        </div>
-      </div>
-
-      <!-- ─── PROMPT ─── -->
-      <div id="panel-subtab-prompt" class="acc-card settings-section-card" style="margin-top:20px">
-        <div class="acc-card-hdr">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
-          <span>Tùy chỉnh Prompt AI Bóc Tách Đơn</span>
-        </div>
-        <div class="af-group" style="margin-bottom:10px">
-          <textarea id="customAiPromptInput" style="width:100%;min-height:180px;padding:10px 12px;border:1.5px solid #E2E8F0;border-radius:10px;font-family:monospace;font-size:12.5px;line-height:1.5;outline:none;resize:vertical;background:#F8FAFC"></textarea>
-        </div>
-        <div style="display:flex;gap:8px">
-          <button id="btnResetPrompt" class="btn btn-secondary" style="padding:8px 14px;font-size:13px">🔄 Khôi phục Mặc định</button>
-          <button id="btnSavePrompt" class="btn btn-primary" style="padding:8px 14px;font-size:13px">💾 Lưu Prompt</button>
-        </div>
-        <div id="promptStatus" style="font-size:12px;margin-top:6px"></div>
-      </div>
-
-      <!-- ─── BLACKLIST ─── -->
-      <div id="panel-subtab-blacklist" class="acc-card settings-section-card" style="margin-top:20px">
-        <div class="acc-card-hdr">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
-          <span>Quản lý Danh sách đen (Blacklist)</span>
-        </div>
-        <div style="display:flex;gap:10px;align-items:flex-end;padding:12px 14px;background:#F8FAFC;border:1px solid #E2E8F0;border-radius:10px;margin-bottom:16px;flex-wrap:wrap">
-          <div class="af-group" style="flex:1;min-width:140px">
-            <label class="af-label" for="blacklistPhoneInp">Số điện thoại</label>
-            <input class="af-input" type="text" id="blacklistPhoneInp" placeholder="Nhập số điện thoại...">
-          </div>
-          <div class="af-group" style="flex:2;min-width:180px">
-            <label class="af-label" for="blacklistReasonInp">Lý do chặn</label>
-            <input class="af-input" type="text" id="blacklistReasonInp" placeholder="VD: Nợ COD, Bùng hàng, Spam...">
-          </div>
-          <button id="btnAddBlacklist" class="btn btn-danger" style="padding:11px 20px">➕ Thêm vào Blacklist</button>
-        </div>
-        <div class="table-wrap" style="max-height:350px;overflow-y:auto">
-          <table>
-            <thead>
-              <tr>
-                <th style="width:140px">Số điện thoại</th>
-                <th>Lý do chặn</th>
-                <th style="width:120px;text-align:center">Ngày thêm</th>
-                <th style="width:80px;text-align:center">Thao tác</th>
-              </tr>
-            </thead>
-            <tbody id="blacklistTableBody"></tbody>
-          </table>
-          <div id="blacklistEmptyState" class="orders-empty" style="display:none">
-            <p>✅ <strong>Danh sách đen trống</strong></p>
-            <p style="font-size:12px;margin-top:4px">Hiện chưa chặn số điện thoại nào.</p>
-          </div>
-        </div>
-      </div>
-
-      <!-- ─── BACKUP ─── -->
-      <div id="panel-subtab-backup" class="acc-card settings-section-card" style="margin-top:20px">
-        <div class="acc-card-hdr">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-          <span>Sao lưu & Khôi phục Dữ liệu</span>
-        </div>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
-          <div style="border:1px solid #E2E8F0;padding:16px;border-radius:10px;display:flex;flex-direction:column;gap:10px;background:#FAFBFF">
-            <div style="font-weight:600;font-size:13px">📥 Sao lưu (Export)</div>
-            <p style="font-size:12px;color:#64748B;line-height:1.5;margin:0">Xuất toàn bộ dữ liệu cấu hình, đơn hàng và lịch sử ra file <code>.json</code> để lưu trữ.</p>
-            <button id="btnExportData" class="btn btn-primary" style="padding:10px;font-size:13px;margin-top:auto">💾 Tải tệp sao lưu (.json)</button>
-          </div>
-          <div style="border:1px solid #E2E8F0;padding:16px;border-radius:10px;display:flex;flex-direction:column;gap:10px;background:#FAFBFF">
-            <div style="font-weight:600;font-size:13px">📤 Khôi phục (Import)</div>
-            <p style="font-size:12px;color:#64748B;line-height:1.5;margin:0">Chọn file <code>.json</code> sao lưu từ máy tính để khôi phục dữ liệu.</p>
-            <input type="file" id="importFileInp" accept=".json" style="display:none">
-            <button id="btnTriggerImport" class="btn btn-secondary" style="padding:10px;font-size:13px;margin-top:auto;border-color:#3C7363;color:#3C7363">📁 Chọn tệp sao lưu</button>
-          </div>
-        </div>
-        <div id="backupStatus" style="font-size:12px;margin-top:8px;text-align:center;font-weight:500"></div>
-      </div>
-    </div>
-
-    <!-- TAB: Quản lý Máy tênh -->
-    <div id="tab-devices" class="tab-content">
-      <div class="page-hdr">
-        <h1>Quản lý Máy tênh đ kết nối</h1>
-        <p>Danh sách CC Máy tênh/Thiết bị đang chạy tiện ch Auto Fill Order đồngõ bộ qua Supabase Cloud.</p>
-      </div>
-
-      <div style="max-width:800px;margin:20px 0;display:flex;flex-direction:column;gap:20px">
-        <!-- Connection Status & Current Device Info -->
-        <div style="padding:20px;background:#FFFFFF;border:1px solid #E2E8F0;border-radius:12px;box-shadow:0 1px 3px rgba(0,0,0,0.05)">
-          <h3 style="font-size:14px;font-weight:700;color:#0F172A;margin-bottom:14px;display:flex;align-items:center;gap:6px"> Trạng thái kết nối Database</h3>
-          
-          <div style="display:flex;align-items:center;gap:12px;padding:12px 16px;background:#F8FAFC;border:1px solid #E2E8F0;border-radius:8px;margin-bottom:16px">
-            <span id="device-tab-status-dot" style="width:12px;height:12px;border-radius:50%;background:#94a3b8;flex-shrink:0"></span>
-            <div>
-              <div id="device-tab-status-label" style="font-weight:700;font-size:14px;color:#1E293B">Đang kiểm tra kết nối...</div>
-              <div id="device-tab-status-sub" style="font-size:12px;color:#64748B;margin-top:2px">Đang tải Cấu hình kết nối Đám Mây...</div>
-            </div>
-          </div>
-
-          <div style="border-top:1px solid #F1F5F9;padding-top:14px;display:grid;grid-template-columns:1fr 1fr;gap:16px">
-            <div>
-              <span style="display:block;font-size:11px;color:#64748B;font-weight:600">TÊN MÁY HIỆN TẠI</span>
-              <span id="device-tab-current-name" style="font-size:14px;font-weight:700;color:#0F172A;word-break:break-all"></span>
-            </div>
-            <div>
-              <span style="display:block;font-size:11px;color:#64748B;font-weight:600">Mã Thiết bị (DEVICE ID)</span>
-              <span id="device-tab-current-id" style="font-size:13px;font-family:monospace;color:#475569;word-break:break-all"></span>
-            </div>
-          </div>
-        </div>
-
-        <!-- Connected Devices List -->
-        <div id="cloudDeviceList" style="padding:22px;background:#FFFFFF;border:1px solid #E2E8F0;border-radius:12px;box-shadow:0 1px 3px rgba(0,0,0,0.05)">
-          <div style="font-weight:700;font-size:14px;color:#0F172A;margin-bottom:12px;display:flex;align-items:center;gap:8px">
-            ️ <span id="cloudDeviceCount">Đang tải danh sách Thiết bị...</span>
-          </div>
-          <div id="cloudDeviceNames" style="display:flex;flex-direction:column;gap:12px;max-height:500px;overflow-y:auto">
-            <!-- Render via JS -->
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- TAB 3: Thốngõ ký bo Co -->
-    <!-- TAB 4: Lịch sử tách đơn -->
-    <div id="tab-history" class="tab-content">
-      <div class="page-hdr">
-        <h1>Lịch sử tách đơn</h1>
-        <p>Ghi lại nội dung gốc và kết quả của Mỗi lần bóc tách đơn hàng.</p>
-      </div>
-
-      <div class="data-card">
-        <div class="controls-bar">
-          <div class="search-filters" style="gap:8px">
-            <label style="display:flex;align-items:center;gap:6px;font-size:13px;color:var(--text-s);cursor:pointer;flex-shrink:0">
-              <input type="checkbox" id="historySelectAll"> chọn tất cả
-            </label>
-            <div style="position:relative; display:flex; align-items:center;">
-              <input type="text" id="historySearch" placeholder="Tìm tên, SĐT, Mã đơn..." style="padding-right:24px;">
-              <button id="searchClearHistory" style="position:absolute; right:6px; background:none; border:none; cursor:pointer; color:var(--text-s); display:none; padding:4px;" title="Xóa tìm kiếm">
-                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
-              </button>
-            </div>
-            <div class="date-filter-group">
-              <label for="historyFilterFrom">Từ</label>
-              <input type="date" id="historyFilterFrom">
-              <label for="historyFilterTo">Đến</label>
-              <input type="date" id="historyFilterTo">
-            </div>
-            <select id="historyFilterDevice">
-              <option value="">-- Tất Cả Máy --</option>
-            </select>
-            <button id="historyFilterToday" class="btn btn-secondary btn-sm">Hôm nay</button>
-            <button id="historyFilter7Days" class="btn btn-secondary btn-sm">7 ngày</button>
-            <button id="historyFilter30Days" class="btn btn-secondary btn-sm">30 ngày</button>
-            <button id="historyFilterThisMonth" class="btn btn-secondary btn-sm">Tháng này</button>
-            <button id="historyClearFilters" class="btn btn-secondary btn-sm"> Xóa lọc</button>
-          </div>
-          <button id="btnHistoryBulkDelete" class="btn btn-danger" style="display:none">️ Xóa (<span id="historySelectedCount">0</span>)</button>
-        </div>
-        <div class="table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th style="width:40px;text-align:center"><input type="checkbox" id="historySelectAllHeader"></th>
-                <th style="width:150px">Thời gian</th>
-                <th style="width:140px">Khách hàng</th>
-                <th style="width:110px">SĐT</th>
-                <th style="min-width:280px">Nội dung gốc</th>
-                <th style="width:80px">ĐVVC</th>
-                <th style="width:100px">Máy</th>
-                <th style="width:50px;text-align:center"></th>
-              </tr>
-            </thead>
-            <tbody id="historyList"></tbody>
-          </table>
-          <div id="historyEmpty" class="orders-empty" style="display:none">
-            <p> <strong>Chưa có lịch sử tách đơn</strong></p>
-            <p style="font-size:12px;margin-top:4px">Sau khi bóc tách đơn trên trang VNPost/J&T, lịch sử sẽ xuất hiện tại đây.</p>
-          </div>
-        </div>
-        <div class="pagination-bar" id="historyPagination" style="display:none">
-          <div class="pagination-info">
-            <span id="historyPageInfo">Trang 1 / 1</span>
-            <span id="historyTotalLabel">(0 mục)</span>
-          </div>
-          <div class="pagination-controls" style="display:flex;align-items:center;gap:8px">
-            <span style="font-size:12px;color:var(--text-s)">
-              Hiển thị
-              <select id="historyPerPage" style="font-size:12px;padding:3px 6px;border:1px solid var(--border);border-radius:6px">
-                <option value="10">10</option>
-                <option value="20" selected>20</option>
-                <option value="50">50</option>
-              </select>
-              mục / trang
-            </span>
-            <button class="btn btn-secondary btn-sm" id="historyPrevBtn"> Trước</button>
-            <div id="historyPageNumbers" class="page-numbers"></div>
-            <button class="btn btn-secondary btn-sm" id="historyNextBtn">Sau </button>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- TAB 5: Địa chỉ & Bản đồ -->
-    <div id="tab-address" class="tab-content">
-      <div class="page-hdr">
-        <h1>Địa chỉ & Bản đồ hành chính</h1>
-        <p>Tra cứu địa chỉ Cũ → Mới sau sáp nhập 2025. Quản lý và chỉnh sửa CC ánh xạ địa danh.</p>
-      </div>
-
-      <div class="stats-grid" style="margin-bottom:16px">
-        <div class="stat-card">
-          <div class="stat-icon orders">️</div>
-          <div class="stat-info">
-            <span class="stat-label">Tỉnh Cũ → Mới</span>
-            <span id="addrStatProvCount" class="stat-value">0</span>
-          </div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-icon cod">️</div>
-          <div class="stat-info">
-            <span class="stat-label">Phường/X Cũ → Mới</span>
-            <span id="addrStatWardCount" class="stat-value">0</span>
-          </div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-icon ratio"></div>
-          <div class="stat-info">
-            <span class="stat-label">ánh xạ đặc biệt</span>
-            <span id="addrStatL2Count" class="stat-value">0</span>
-          </div>
-        </div>
-      </div>
-
-      <div class="submenu" id="addrSubmenu">
-        <button class="submenu-item active" data-subtab="addr-province">️ Tỉnh thành</button>
-        <button class="submenu-item" data-subtab="addr-converter"> Chuyển đổi địa chỉ</button>
-        <button class="submenu-item" data-subtab="addr-mapping"> ánh xạ đặc biệt</button>
-        <button class="submenu-item" data-subtab="addr-bulk"> Cập nhật đơn Cũ</button>
-      </div>
-
-      <!-- Province -->
-      <div id="panel-subtab-addr-province" class="subtab-content config-section" style="margin:0">
-        <h3 class="subtab-title">Sp nhập Tỉnh/Thnh phố 2025</h3>
-        <div id="addrProvinceList" class="addr-province-list"></div>
-      </div>
-
-      <!-- Converter -->
-      <div id="panel-subtab-addr-converter" class="subtab-content config-section" style="margin:0">
-        <h3 class="subtab-title">Chuyển đổi địa chỉ Cũ → Mới</h3>
-        <div class="addr-converter-grid">
+      <!-- ======================================================== -->
+      <!-- TAB 1: EXECUTIVE DASHBOARD & COD ANALYTICS                -->
+      <!-- ======================================================== -->
+      <section id="tab-dashboard" class="tab-content active">
+        <div class="page-hdr">
           <div>
-            <label class="addr-converter-label">Địa chỉ gốc (Cũ)</label>
-            <textarea id="addrConverterInput" class="addr-converter-input" placeholder="VD: 579/43 đườngõ quang trung phường 1 g vấp hồ ch minh"></textarea>
+            <h1>Dashboard Điều Hành Doanh Thu & Dòng Tiền</h1>
+            <p>Báo cáo dòng tiền thu hộ COD, sản lượng bưu điện và phân bổ nick lên đơn realtime.</p>
           </div>
-          <div>
-            <label class="addr-converter-label">Địa chỉ Mới (sau chuyển đổi)</label>
-            <textarea id="addrConverterOutput" class="addr-converter-input" readonly placeholder="kết quả sẽ hiển thị tại đây..."></textarea>
-          </div>
+          <button id="btnRefreshStats" class="btn btn-secondary"><i class="ph ph-arrows-clockwise"></i> Làm mới số liệu</button>
         </div>
-        <div class="addr-converter-actions">
-          <button id="btnAddrConvert" class="btn btn-primary"> Chuyển đổi</button>
-          <button id="btnAddrConvertClear" class="btn btn-secondary"> Xa</button>
-        </div>
-        <div id="addrConvertDetail" class="addr-converter-detail"></div>
-      </div>
 
-      <!-- Level2 mapping -->
-      <div id="panel-subtab-addr-mapping" class="subtab-content" style="margin:0;display:none">
-        <div class="config-section" style="margin:0">
-          <h3 class="subtab-title">ánh xạ địa chỉ đặc biệt</h3>
-          <p class="subtab-desc">Thêm/sửa/xa CC ánh xạ địa chỉ Cấp 2 (phường/x/Quận/Huyện) khi tách đơn tự động.</p>
-          <div class="addr-mapping-form">
-            <div class="addr-mapping-field">
-              <label>Địa chỉ Cũ (key, dùng | để phn Cch)</label>
-              <input type="text" id="addrMappingKey" placeholder="VD: hồ ch minh|g vấp|phường 1">
+        <!-- Quick KPI Cards -->
+        <div class="quick-stat-grid">
+          <div class="stat-card">
+            <div class="stat-icon" style="background:rgba(16,185,129,0.12); color:#10B981;">💵</div>
+            <div class="stat-info">
+              <div class="stat-label">Tổng Tiền Thu COD Hôm Nay</div>
+              <div class="stat-value" id="kpiTodayCod" style="color:#10B981;">18.450.000 đ</div>
+              <div class="stat-trend text-green">🟢 24 đơn bưu điện hoàn tất</div>
             </div>
-            <div class="addr-mapping-field">
-              <label>Phường/X Mới</label>
-              <input type="text" id="addrMappingWard" placeholder="Phường Hạnh Thàng">
-            </div>
-            <div class="addr-mapping-field">
-              <label>Quận/Huyện Mới</label>
-              <input type="text" id="addrMappingDist" placeholder="Quận G Vấp">
-            </div>
-            <div class="addr-mapping-field">
-              <label>Tỉnh/Thnh Mới</label>
-              <input type="text" id="addrMappingProv" placeholder="Thnh phố Hồ Ch Minh">
-            </div>
-            <button id="btnAddrMappingSave" class="btn btn-primary btn-sm" style="padding:7px 16px"> Lưu</button>
           </div>
-          <div class="table-wrap" style="max-height:400px;overflow-y:auto">
-            <table>
+
+          <div class="stat-card">
+            <div class="stat-icon" style="background:rgba(79,70,229,0.12); color:#4F46E5;">📦</div>
+            <div class="stat-info">
+              <div class="stat-label">Tổng Đơn Gửi Trong Tháng</div>
+              <div class="stat-value" id="kpiMonthOrders">486 Đơn</div>
+              <div class="stat-trend text-purple">📈 Tăng 18.2% so với tháng trước</div>
+            </div>
+          </div>
+
+          <div class="stat-card">
+            <div class="stat-icon" style="background:rgba(245,158,11,0.12); color:#F59E0B;">🏢</div>
+            <div class="stat-info">
+              <div class="stat-label">Nick Bưu Điện Đang Dùng</div>
+              <div class="stat-value" style="font-size:16px;">🏢 Acc Kim Sa Tùng</div>
+              <div class="stat-trend text-amber">Cổng ưu tiên: VNPost & J&T</div>
+            </div>
+          </div>
+
+          <div class="stat-card">
+            <div class="stat-icon" style="background:rgba(59,130,246,0.12); color:#3B82F6;">📱</div>
+            <div class="stat-info">
+              <div class="stat-label">Extension Nhân Viên Online</div>
+              <div class="stat-value" id="kpiOnlineDevices">3 / 3 Máy</div>
+              <div class="stat-trend text-green">🟢 Đang kết nối ổn định</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Carrier & Account Analytics Grid -->
+        <div style="display:grid; grid-template-columns: 2fr 1fr; gap:16px; margin-bottom:20px;">
+          <div class="card">
+            <h3 style="font-size:14px; font-weight:700; margin-bottom:12px;"><i class="ph ph-chart-bar text-indigo-500"></i> Doanh Số COD & Đơn Hàng Theo Ngày</h3>
+            <div style="height:260px;">
+              <canvas id="chartRevenueTimeline"></canvas>
+            </div>
+          </div>
+
+          <div class="card">
+            <h3 style="font-size:14px; font-weight:700; margin-bottom:12px;"><i class="ph ph-pie-chart text-indigo-500"></i> Tỷ Lệ ĐVVC (VNPost vs J&T)</h3>
+            <div style="height:260px; display:flex; align-items:center; justify-content:center;">
+              <canvas id="chartCarrierShare"></canvas>
+            </div>
+          </div>
+        </div>
+
+        <!-- Performance by Carrier Account Table -->
+        <div class="card">
+          <h3 style="font-size:14px; font-weight:700; margin-bottom:12px;"><i class="ph ph-buildings text-indigo-500"></i> Hiệu Suất Theo Từng Tài Khoản Bưu Điện / J&T</h3>
+          <table class="table" style="width:100%;">
+            <thead>
+              <tr>
+                <th>Tài Khoản Bưu Điện</th>
+                <th>Đơn Vị Vận Chuyển</th>
+                <th>Đơn Hôm Nay</th>
+                <th>Tổng COD Tháng</th>
+                <th>Tỷ Lệ Giao Thành Công</th>
+                <th>Trạng Thái</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><strong>🏢 Acc Kim Sa Tùng</strong></td>
+                <td><span class="badge" style="background:#E0E7FF; color:#4338CA;">VNPost Bưu Điện</span></td>
+                <td>16 đơn</td>
+                <td><strong>142.500.000 đ</strong></td>
+                <td><span style="color:#10B981; font-weight:700;">97.4%</span></td>
+                <td><span class="status-online">Hoạt động</span></td>
+              </tr>
+              <tr>
+                <td><strong>🏢 Acc Nhựt Lũa</strong></td>
+                <td><span class="badge" style="background:#FEE2E2; color:#B91C1C;">J&T Express</span></td>
+                <td>8 đơn</td>
+                <td><strong>68.200.000 đ</strong></td>
+                <td><span style="color:#10B981; font-weight:700;">95.8%</span></td>
+                <td><span class="status-online">Hoạt động</span></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- ======================================================== -->
+      <!-- TAB 2: MASTER ORDERS & DISPATCH                           -->
+      <!-- ======================================================== -->
+      <section id="tab-orders" class="tab-content">
+        <div class="page-hdr">
+          <div>
+            <h1>Quản Lý Đơn Hàng & Đối Soát Bưu Điện Toàn Hệ Thống</h1>
+            <p>Theo dõi toàn bộ đơn hàng nhân viên đã bấm điền tự động lên VNPost / J&T.</p>
+          </div>
+          <div style="display:flex; gap:8px;">
+            <button id="btnOpenAiParserModal" class="btn btn-primary"><i class="ph ph-magic-wand"></i> + Bóc Tách Đơn AI</button>
+            <button id="btnExportOrdersExcel" class="btn btn-secondary"><i class="ph ph-file-xls"></i> Xuất Excel Đối Soát</button>
+          </div>
+        </div>
+
+        <!-- Filter Bar -->
+        <div class="filter-bar" style="display:flex; gap:10px; flex-wrap:wrap; margin-bottom:16px;">
+          <input type="text" id="orderSearchInput" class="field" placeholder="🔍 Tìm tên khách, SĐT, mã vận đơn, mã đơn..." style="max-width:320px;">
+          <select id="orderCarrierFilter" class="field" style="max-width:180px;">
+            <option value="">Tất cả ĐVVC</option>
+            <option value="vnpost">VNPost Bưu Điện</option>
+            <option value="jt">J&T Express</option>
+          </select>
+          <select id="orderAccountFilter" class="field" style="max-width:200px;">
+            <option value="">Tất cả Tài khoản Bưu điện</option>
+            <option value="🏢 Acc Kim Sa Tùng">🏢 Acc Kim Sa Tùng</option>
+            <option value="🏢 Acc Nhựt Lũa">🏢 Acc Nhựt Lũa</option>
+          </select>
+          <select id="orderStaffFilter" class="field" style="max-width:180px;">
+            <option value="">Tất cả Nhân viên</option>
+            <option value="NV-Mai">Nhân viên Mai</option>
+            <option value="NV-Thang">Nhân viên Thắng</option>
+          </select>
+        </div>
+
+        <!-- Master Orders Table -->
+        <div class="card" style="padding:0; overflow:hidden;">
+          <table class="table" id="masterOrdersTable" style="width:100%; margin:0;">
+            <thead>
+              <tr>
+                <th>Khách Hàng</th>
+                <th>SĐT & Địa Chỉ</th>
+                <th>Mã Đơn / Vận Đơn</th>
+                <th>Tiền COD</th>
+                <th>Tài Khoản Bưu Điện / J&T</th>
+                <th>Nhân Viên & Máy</th>
+                <th>Thời Gian</th>
+                <th style="text-align:center;">Thao Tác</th>
+              </tr>
+            </thead>
+            <tbody id="masterOrdersTableBody">
+              <!-- Rendered via JS -->
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- ======================================================== -->
+      <!-- TAB 3: SHOPS & WAREHOUSES MANAGEMENT                      -->
+      <!-- ======================================================== -->
+      <section id="tab-shops" class="tab-content">
+        <div class="page-hdr">
+          <div>
+            <h1>Quản Lý Cửa Hàng & Kho Hàng Chi Nhánh</h1>
+            <p>Thiết lập kho bãi gửi hàng, hotline, bưu cục mặc định và tài khoản bưu điện cho từng shop.</p>
+          </div>
+          <button id="btnAddNewShopModal" class="btn btn-primary"><i class="ph ph-plus"></i> + Thêm Cửa Hàng Mới</button>
+        </div>
+
+        <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap:16px;">
+          <!-- Shop Card 1 -->
+          <div class="remote-card">
+            <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:12px;">
+              <div>
+                <span class="badge" style="background:#E0E7FF; color:#4338CA; margin-bottom:4px;">MÃ: SHOP-SG-01</span>
+                <h3 style="font-size:15px; font-weight:700;">Kho Bonsai SG (Chi nhánh 1)</h3>
+              </div>
+              <span class="status-online">Đang hoạt động</span>
+            </div>
+            <p style="font-size:12px; color:var(--text-s); margin-bottom:8px;">📍 <strong>Kho gửi:</strong> 120/45 Tân Kỳ Tân Quý, P. Sơn Kỳ, Q. Tân Phú, TP. Hồ Chí Minh</p>
+            <p style="font-size:12px; color:var(--text-s); margin-bottom:8px;">📞 <strong>Hotline:</strong> 0987.654.321 (Anh Tài)</p>
+            <p style="font-size:12px; color:var(--text-s); margin-bottom:12px;">🏢 <strong>Nick Bưu điện:</strong> 🏢 Acc Kim Sa Tùng (VNPost) & Acc Nhựt Lũa (J&T)</p>
+            <div style="display:flex; gap:8px; border-top:1px solid var(--border); padding-top:12px;">
+              <button class="btn btn-secondary btn-sm" style="flex:1;"><i class="ph ph-pencil"></i> Sửa Thông Tin</button>
+              <button class="btn btn-secondary btn-sm"><i class="ph ph-users"></i> 3 Nhân viên</button>
+            </div>
+          </div>
+
+          <!-- Shop Card 2 -->
+          <div class="remote-card">
+            <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:12px;">
+              <div>
+                <span class="badge" style="background:#FEF3C7; color:#B45309; margin-bottom:4px;">MÃ: SHOP-HN-02</span>
+                <h3 style="font-size:15px; font-weight:700;">Kho Phụ Kiện Hà Nội (Chi nhánh 2)</h3>
+              </div>
+              <span class="status-online">Đang hoạt động</span>
+            </div>
+            <p style="font-size:12px; color:var(--text-s); margin-bottom:8px;">📍 <strong>Kho gửi:</strong> 45 Phố Huế, Q. Hoàn Kiếm, Hà Nội</p>
+            <p style="font-size:12px; color:var(--text-s); margin-bottom:8px;">📞 <strong>Hotline:</strong> 0912.345.678</p>
+            <p style="font-size:12px; color:var(--text-s); margin-bottom:12px;">🏢 <strong>Nick Bưu điện:</strong> 🏢 Acc Kim Sa Tùng (VNPost)</p>
+            <div style="display:flex; gap:8px; border-top:1px solid var(--border); padding-top:12px;">
+              <button class="btn btn-secondary btn-sm" style="flex:1;"><i class="ph ph-pencil"></i> Sửa Thông Tin</button>
+              <button class="btn btn-secondary btn-sm"><i class="ph ph-users"></i> 2 Nhân viên</button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ======================================================== -->
+      <!-- TAB 4: STAFF & RBAC MANAGEMENT                            -->
+      <!-- ======================================================== -->
+      <section id="tab-staff" class="tab-content">
+        <div class="page-hdr">
+          <div>
+            <h1>Quản Lý Nhân Viên & Phân Quyền Vận Hành</h1>
+            <p>Kiểm soát nhân sự lên đơn, khóa quyền xem doanh thu COD và phân bổ shop làm việc.</p>
+          </div>
+          <button id="btnAddNewStaffModal" class="btn btn-primary"><i class="ph ph-user-plus"></i> + Thêm Nhân Viên Mới</button>
+        </div>
+
+        <div class="card" style="padding:0; overflow:hidden;">
+          <table class="table" style="width:100%; margin:0;">
+            <thead>
+              <tr>
+                <th>Nhân Viên</th>
+                <th>Cửa Hàng Trực</th>
+                <th>Đơn Hôm Nay</th>
+                <th>Quyền Xem COD</th>
+                <th>Quyền Xóa Đơn</th>
+                <th>Trạng Thái</th>
+                <th style="text-align:center;">Thao Tác</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>
+                  <strong>Nguyễn Văn Tài</strong><br>
+                  <small style="color:var(--text-s);">tai.owner@bonsai.vn · <strong>Super Owner</strong></small>
+                </td>
+                <td><span class="badge" style="background:#E0E7FF; color:#4338CA;">Tất cả Chi nhánh</span></td>
+                <td>—</td>
+                <td><span style="color:#10B981; font-weight:700;">🟢 Toàn quyền</span></td>
+                <td><span style="color:#10B981; font-weight:700;">🟢 Toàn quyền</span></td>
+                <td><span class="status-online">Chủ Shop</span></td>
+                <td style="text-align:center;">🔒 Không thể khóa</td>
+              </tr>
+              <tr>
+                <td>
+                  <strong>Trần Thị Mai</strong><br>
+                  <small style="color:var(--text-s);">mai.staff@bonsai.vn · Nhân viên lên đơn</small>
+                </td>
+                <td>Kho Bonsai SG (Chi nhánh 1)</td>
+                <td><strong>14 đơn</strong></td>
+                <td><span style="color:#EF4444; font-weight:700;">🔒 Bị khóa (Ẩn COD)</span></td>
+                <td><span style="color:#EF4444; font-weight:700;">🔒 Bị khóa</span></td>
+                <td><span class="status-online">Đang trực ca</span></td>
+                <td style="text-align:center;">
+                  <button class="btn btn-secondary btn-sm">Sửa quyền</button>
+                  <button class="btn btn-danger btn-sm">Tạm khóa</button>
+                </td>
+              </tr>
+              <tr>
+                <td>
+                  <strong>Lê Văn Thắng</strong><br>
+                  <small style="color:var(--text-s);">thang.staff@bonsai.vn · Nhân viên lên đơn</small>
+                </td>
+                <td>Kho Phụ Kiện HN (Chi nhánh 2)</td>
+                <td><strong>10 đơn</strong></td>
+                <td><span style="color:#EF4444; font-weight:700;">🔒 Bị khóa (Ẩn COD)</span></td>
+                <td><span style="color:#EF4444; font-weight:700;">🔒 Bị khóa</span></td>
+                <td><span class="status-online">Đang trực ca</span></td>
+                <td style="text-align:center;">
+                  <button class="btn btn-secondary btn-sm">Sửa quyền</button>
+                  <button class="btn btn-danger btn-sm">Tạm khóa</button>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- ======================================================== -->
+      <!-- TAB 5: EXTENSION FLEET & DEVICE MONITORING                -->
+      <!-- ======================================================== -->
+      <section id="tab-devices" class="tab-content">
+        <div class="page-hdr">
+          <div>
+            <h1>Giám Sát Extension & Thiết Bị Nhân Viên Realtime</h1>
+            <p>Theo dõi các máy tính đang cài Extension, lần bấm điền đơn gần nhất và ngắt kết nối từ xa.</p>
+          </div>
+          <button class="btn btn-secondary" id="btnRefreshFleet"><i class="ph ph-arrows-clockwise"></i> Quét Thiết Bị</button>
+        </div>
+
+        <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap:16px;">
+          <!-- Device 1 -->
+          <div class="remote-card">
+            <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:10px;">
+              <div>
+                <h4 style="font-size:14px; font-weight:700;">💻 PC-KHO-SG-01 (Máy Trực Ca Mai)</h4>
+                <p style="font-size:11px; color:var(--text-s); font-family:monospace;">ID: DEV-SG-88F2 · Chrome 128 / Windows 11</p>
+              </div>
+              <span class="status-online">Online</span>
+            </div>
+            <p style="font-size:12px; color:var(--text-s); margin-bottom:6px;">🏪 <strong>Shop gán:</strong> Kho Bonsai SG (Chi nhánh 1)</p>
+            <p style="font-size:12px; color:var(--text-s); margin-bottom:12px;">⚡ <strong>Đơn vừa lên:</strong> 2 phút trước (VNPost - 650.000 đ)</p>
+            <button class="btn btn-danger btn-sm" style="width:100%;"><i class="ph ph-prohibit"></i> Ngắt Kết Nối Máy Này (Kill Switch)</button>
+          </div>
+
+          <!-- Device 2 -->
+          <div class="remote-card">
+            <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:10px;">
+              <div>
+                <h4 style="font-size:14px; font-weight:700;">💻 PC-KHO-HN-01 (Máy Trực Ca Thắng)</h4>
+                <p style="font-size:11px; color:var(--text-s); font-family:monospace;">ID: DEV-HN-44C1 · Chrome 128 / Windows 10</p>
+              </div>
+              <span class="status-online">Online</span>
+            </div>
+            <p style="font-size:12px; color:var(--text-s); margin-bottom:6px;">🏪 <strong>Shop gán:</strong> Kho Phụ Kiện Hà Nội (Chi nhánh 2)</p>
+            <p style="font-size:12px; color:var(--text-s); margin-bottom:12px;">⚡ <strong>Đơn vừa lên:</strong> 15 phút trước (VNPost - 1.200.000 đ)</p>
+            <button class="btn btn-danger btn-sm" style="width:100%;"><i class="ph ph-prohibit"></i> Ngắt Kết Nối Máy Này (Kill Switch)</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- ======================================================== -->
+      <!-- TAB 6: REMOTE PANEL & AI CONFIGURATION                    -->
+      <!-- ======================================================== -->
+      <section id="tab-panel-config" class="tab-content">
+        <div class="page-hdr">
+          <div>
+            <h1>Cấu Hình Tập Trung Cho Extension & Floating Panel Từ Xa</h1>
+            <p>Chủ shop cài đặt 1 lần trên Web, tất cả máy tính nhân viên sẽ tự động nhận cấu hình qua Cloud.</p>
+          </div>
+          <button id="btnSaveRemoteConfig" class="btn btn-primary"><i class="ph ph-floppy-disk"></i> Lưu & Đồng Bộ Toàn Bộ Máy</button>
+        </div>
+
+        <div style="display:grid; grid-template-columns: 1fr 1fr; gap:16px;">
+          <!-- Remote Floating Panel Control -->
+          <div class="card">
+            <h3 style="font-size:14px; font-weight:700; margin-bottom:12px;"><i class="ph ph-app-window text-indigo-500"></i> Điều Khiển Giao Diện Floating Panel Nhân Viên</h3>
+            
+            <div class="form-group" style="margin-bottom:12px;">
+              <label style="display:flex; align-items:center; gap:8px; cursor:pointer;">
+                <input type="checkbox" id="cfgShowQuickFillBtn" checked>
+                <span>Hiển thị nút <strong>"Điền Nhanh Bưu Điện VNPost & J&T"</strong> trên panel</span>
+              </label>
+            </div>
+
+            <div class="form-group" style="margin-bottom:12px;">
+              <label style="display:flex; align-items:center; gap:8px; cursor:pointer;">
+                <input type="checkbox" id="cfgAllowStaffDrafts" checked>
+                <span>Cho phép nhân viên lưu đơn nháp tạm thời</span>
+              </label>
+            </div>
+
+            <div class="form-group" style="margin-bottom:12px;">
+              <label style="display:flex; align-items:center; gap:8px; cursor:pointer;">
+                <input type="checkbox" id="cfgAutoNormalizeAddress" checked>
+                <span>Tự động chuẩn hóa địa chỉ 3 cấp (Tỉnh / Huyện / Xã) trước khi điền</span>
+              </label>
+            </div>
+
+            <div class="form-group">
+              <label>Vị trí mặc định của Floating Panel trên màn hình:</label>
+              <select id="cfgPanelPosition" class="field" style="margin-top:6px;">
+                <option value="bottom-right" selected>Góc dưới bên phải (Mặc định)</option>
+                <option value="top-right">Góc trên bên phải</option>
+                <option value="bottom-left">Góc dưới bên trái</option>
+              </select>
+            </div>
+          </div>
+
+          <!-- Remote AI Prompt Control -->
+          <div class="card">
+            <h3 style="font-size:14px; font-weight:700; margin-bottom:12px;"><i class="ph ph-sparkle text-indigo-500"></i> Cấu Hình Prompt AI Bóc Tách Đơn Hàng (Áp Dụng Toàn Hệ Thống)</h3>
+            <div class="form-group">
+              <label>Prompt Chuẩn Bóc Tách Tin Nhắn Zalo/Messenger/TikTok:</label>
+              <textarea id="cfgRemoteAiPrompt" class="field" rows="6" style="margin-top:6px; font-family:monospace; font-size:11px;">Bạn là trợ lý AI chuyên bóc tách đơn hàng tiếng Việt. Hãy trích xuất:
+1. Tên người nhận (customer_name)
+2. Số điện thoại (phone - định dạng 10 số)
+3. Địa chỉ giao hàng đầy đủ (address)
+4. Tiền thu hộ COD (cod_amount - chỉ lấy số nguyên)
+5. Ghi chú đơn hàng (note - loại cây/sản phẩm)</textarea>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ======================================================== -->
+      <!-- TAB 7: CUSTOMERS & BLACKLIST MANAGEMENT                   -->
+      <!-- ======================================================== -->
+      <section id="tab-customers" class="tab-content">
+        <div class="page-hdr">
+          <div>
+            <h1>Sổ Bạ Khách Hàng & Danh Sách Đen (Blacklist)</h1>
+            <p>Quản lý lịch sử mua hàng, tổng COD tích lũy và chặn số điện thoại bom hàng nguy hiểm.</p>
+          </div>
+          <button id="btnAddBlacklistModal" class="btn btn-danger"><i class="ph ph-shield-warning"></i> + Thêm SĐT Bom Hàng (Blacklist)</button>
+        </div>
+
+        <div style="display:grid; grid-template-columns: 2fr 1fr; gap:16px;">
+          <!-- Customers Table -->
+          <div class="card" style="padding:0; overflow:hidden;">
+            <div style="padding:12px 16px; border-bottom:1px solid var(--border); font-weight:700;">Danh Sách Khách Hàng Thân Thiết</div>
+            <table class="table" style="width:100%; margin:0;">
               <thead>
                 <tr>
-                  <th style="min-width:180px">Key (Cũ)</th>
-                  <th style="min-width:140px">Phường/X Mới</th>
-                  <th style="min-width:130px">Quận/Huyện Mới</th>
-                  <th style="min-width:140px">Tỉnh/Thnh Mới</th>
-                  <th style="width:60px;text-align:center">Xa</th>
+                  <th>Khách Hàng</th>
+                  <th>Số Điện Thoại</th>
+                  <th>Số Đơn Đã Mua</th>
+                  <th>Tổng Tiền COD</th>
+                  <th>Phân Hạng</th>
                 </tr>
               </thead>
-              <tbody id="addrMappingTableBody"></tbody>
+              <tbody>
+                <tr>
+                  <td><strong>Nguyễn Văn An</strong></td>
+                  <td><code>0901.234.567</code></td>
+                  <td>12 đơn</td>
+                  <td><strong>18.500.000 đ</strong></td>
+                  <td><span class="badge" style="background:#FEF3C7; color:#B45309;">👑 Khách VIP</span></td>
+                </tr>
+                <tr>
+                  <td><strong>Trần Bích Hạnh</strong></td>
+                  <td><code>0918.765.432</code></td>
+                  <td>6 đơn</td>
+                  <td><strong>7.200.000 đ</strong></td>
+                  <td><span class="badge" style="background:#E0E7FF; color:#4338CA;">Thành Viên</span></td>
+                </tr>
+              </tbody>
             </table>
           </div>
-        </div>
-      </div>
 
-      <!-- Bulk update -->
-      <div id="panel-subtab-addr-bulk" class="subtab-content config-section" style="margin:0">
-        <h3 class="subtab-title">Cập nhật địa chỉ trong đơn Cũ</h3>
-        <p class="subtab-desc">Quét toàn bộ đơn hàng đ lưu, tìm và thay thế tỉnh/phường Cũ bằng tên Mới theo bản đồ sáp nhập 2025.</p>
-        <div class="addr-bulk-actions">
-          <button id="btnAddrBulkPreview" class="btn btn-secondary"> Xem trước</button>
-          <button id="btnAddrBulkApply" class="btn btn-primary" disabled> Cập nhật (<span id="addrBulkCount">0</span> đơn)</button>
-        </div>
-        <div id="addrBulkResult" class="addr-bulk-result"></div>
-      </div>
-    </div>
-
-    <!-- TAB 6: Nhật ký lỗi -->
-    <div id="tab-logs" class="tab-content">
-      <div class="page-hdr">
-        <h1>Nhật ký lỗi (Error Logs)</h1>
-        <p>Theo dõi CC lỗi phát sinh trong qu trênh tách đơn và tự động điền form.</p>
-      </div>
-
-      <div class="data-card">
-        <div class="controls-bar" style="justify-content:space-between">
-          <div class="search-filters" style="flex:1;gap:8px;display:flex;align-items:center">
-            <input type="text" id="logsSearch" placeholder="Tìm kiếm thông điệp lỗi..." style="max-width:400px">
-          </div>
-          <div style="display:flex;gap:8px">
-            <button id="btnClearLogs" class="btn btn-danger">️ Xóa sạch Nhật ký</button>
-            <button id="btnCopyLogs" class="btn btn-secondary"> Sao chép tất Cả</button>
+          <!-- Blacklist Panel -->
+          <div class="card">
+            <h3 style="font-size:14px; font-weight:700; color:#EF4444; margin-bottom:8px;"><i class="ph ph-warning-octagon"></i> Danh Sách Đen (Cảnh Báo Đỏ)</h3>
+            <p style="font-size:11px; color:var(--text-s); margin-bottom:12px;">Khi nhân viên bóc tách đơn có các SĐT này, Extension sẽ báo động đỏ 🚨 từ chối gửi bưu điện.</p>
+            <div style="display:flex; flex-direction:column; gap:8px;">
+              <div style="display:flex; justify-content:space-between; align-items:center; background:#FFF1F2; border:1px solid #FECDD3; padding:8px 12px; border-radius:8px;">
+                <div>
+                  <strong style="color:#E11D48; font-size:12px;">0933.111.222</strong>
+                  <div style="font-size:10px; color:#9F1239;">Bom hàng 3 lần tại Tân Bình</div>
+                </div>
+                <button class="btn btn-secondary btn-sm" style="color:#EF4444;">Xóa</button>
+              </div>
+              <div style="display:flex; justify-content:space-between; align-items:center; background:#FFF1F2; border:1px solid #FECDD3; padding:8px 12px; border-radius:8px;">
+                <div>
+                  <strong style="color:#E11D48; font-size:12px;">0988.999.000</strong>
+                  <div style="font-size:10px; color:#9F1239;">Số ảo không nghe máy</div>
+                </div>
+                <button class="btn btn-secondary btn-sm" style="color:#EF4444;">Xóa</button>
+              </div>
+            </div>
           </div>
         </div>
-        <div class="table-wrap" style="margin-top:16px">
-          <table>
-            <thead>
-              <tr>
-                <th style="width:180px">Thời gian</th>
-                <th style="width:250px">Lỗi (Message)</th>
-                <th style="min-width:400px">Chi tiếtết lỗi (Stack / Context)</th>
-              </tr>
-            </thead>
-            <tbody id="logsList"></tbody>
-          </table>
-          <div id="logsEmpty" class="orders-empty" style="display:none">
-            <p> <strong>Hệ thống hoạt động tốt!</strong></p>
-            <p style="font-size:12px;margin-top:4px">Không pht hiện lỗi no phát sinh gần đây.</p>
+      </section>
+
+      <!-- ======================================================== -->
+      <!-- TAB 8: EXECUTIVE ACCOUNT & SECURITY                      -->
+      <!-- ======================================================== -->
+      <section id="tab-account" class="tab-content">
+        <div class="page-hdr">
+          <div>
+            <h1>Tài Khoản Chủ Shop & Bảo Mật Doanh Nghiệp</h1>
+            <p>Quản lý tài khoản Super Owner, điểm số an toàn hệ thống và thiết lập bảo vệ phiên làm việc.</p>
           </div>
         </div>
-      </div>
-    </div>
-    <!-- TAB: Tách đơn hàng loạt -->
-    <div id="tab-bulk" class="tab-content">
-      <div class="page-hdr">
-        <h1>Tách đơn hàng loạt</h1>
-        <p>Dn nhiều đơn hàng cùng lúc, hệ thống sẽ tự động bóc tách, lưu nháp và hỗ trợ điền nhanh vo nền tảngõ.</p>
-      </div>
 
-      <!-- Card 1: Nhập liệu -->
-      <div class="card" style="margin-bottom: 20px;">
-        <div class="card-header" style="display: flex; justify-content: space-between; align-items: center;">
-          <h3>Nhập liệu đơn hàng</h3>
-          <button id="btnViewBulkHistory" class="btn btn-secondary" style="font-size: 12px; padding: 4px 10px;">Lịch sử thẻ tách</button>
-        </div>
-        <div class="card-body">
-          <textarea id="bulkInputText" rows="10" placeholder="Dn danh sách đơn hàng vo đy...&#10;Lưu ý: : CC đơn hàng nên được ngăn cách bằng dấu -, , hoặc " style="width: 100%; padding: 12px; border: 1px solid var(--border); border-radius: 8px; font-family: inherit; resize: vertical; margin-bottom: 12px;"></textarea>
-          <div style="display: flex; gap: 12px; align-items: center;">
-            <button id="btnParseBulk" class="btn btn-primary">Tiến hành tách đơn</button>
-            <button id="btnClearBulk" class="btn btn-secondary">Xóa trắng</button>
+        <div style="display:grid; grid-template-columns: 1fr 1fr; gap:16px;">
+          <!-- Profile Card -->
+          <div class="card">
+            <h3 style="font-size:14px; font-weight:700; margin-bottom:12px;"><i class="ph ph-user-circle text-indigo-500"></i> Hồ Sơ Super Owner</h3>
+            <div style="display:flex; align-items:center; gap:16px; margin-bottom:16px;">
+              <div class="avatar" style="width:60px; height:60px; font-size:20px; background:#4F46E5; color:#fff;">AF</div>
+              <div>
+                <h4 style="font-size:16px; font-weight:800;" id="accOwnerName">Nguyễn Văn Tài</h4>
+                <p style="font-size:12px; color:var(--text-s);">Owner ID: <code>OWNER-BONSAI-01</code></p>
+                <span class="owner-badge">Super Owner</span>
+              </div>
+            </div>
+            <div class="form-group" style="margin-bottom:10px;">
+              <label>Email Quản Trị:</label>
+              <input type="text" class="field" value="vinhtaibonsai@gmail.com" readonly style="background:var(--bg); margin-top:4px;">
+            </div>
+            <div class="form-group">
+              <label>Hotline Chủ Shop:</label>
+              <input type="text" class="field" value="0987.654.321" style="margin-top:4px;">
+            </div>
+          </div>
+
+          <!-- Password & Strength Meter -->
+          <div class="card">
+            <h3 style="font-size:14px; font-weight:700; margin-bottom:12px;"><i class="ph ph-key text-indigo-500"></i> Đổi Mật Khẩu Chủ Shop An Toàn</h3>
+            <div class="form-group" style="margin-bottom:10px;">
+              <label>Mật Khẩu Mới:</label>
+              <input type="password" id="txtOwnerNewPass" class="field" placeholder="Nhập mật khẩu mới..." style="margin-top:4px;">
+              <!-- Strength meter bar -->
+              <div style="height:4px; background:#E2E8F0; border-radius:2px; margin-top:6px; overflow:hidden;">
+                <div id="pwStrengthMeterBar" style="height:100%; width:0%; background:#EF4444; transition:all 0.3s;"></div>
+              </div>
+              <div id="pwStrengthMeterText" style="font-size:10px; font-weight:700; color:#EF4444; margin-top:4px;">Độ mạnh: Chưa nhập</div>
+            </div>
+
+            <div class="form-group" style="margin-bottom:14px;">
+              <label>Xác Nhận Mật Khẩu:</label>
+              <input type="password" id="txtOwnerConfirmPass" class="field" placeholder="Nhập lại mật khẩu..." style="margin-top:4px;">
+            </div>
+
+            <button id="btnSaveOwnerPass" class="btn btn-primary" style="width:100%;"><i class="ph ph-shield-check"></i> Lưu Mật Khẩu Mới</button>
           </div>
         </div>
-      </div>
-
-      <!-- Card 2: kết quả tách tạm thời -->
-      <div class="card" id="bulkResultsCard" style="display: none; margin-bottom: 20px;">
-        <div class="card-header" style="display: flex; justify-content: space-between; align-items: center;">
-          <h3>kết quả vừa tách (<span id="bulkCount">0</span> đơn)</h3>
-          <button id="btnSaveBulkToDraft" class="btn btn-primary" style="font-size: 12px; padding: 6px 12px;"> Lưu ý: tất Cả vo Đơn Nháp</button>
-        </div>
-        <div class="table-container">
-          <table class="data-table">
-            <thead>
-              <tr>
-                <th width="40">STT</th>
-                <th>Khách hàng</th>
-                <th>Địa chỉ</th>
-                <th>COD</th>
-                <th width="80" style="text-align:center">Thu cước</th>
-                <th>ghi chú</th>
-                <th width="100" style="text-align:center">Trạng thái</th>
-                <th width="140" style="text-align:center">Thao tác</th>
-              </tr>
-            </thead>
-            <tbody id="bulkResultsBody"></tbody>
-          </table>
-        </div>
-      </div>
-
-      <!-- Card 3: Danh sách Đơn Nháp lưu trữ (Dạngõ thẻ gom nhóm) -->
-      <div id="bulkDraftsContainer" style="margin-top: 20px;">
-        <!-- CC thẻ đơn nháp sẽ đượC JS render độngõ vo đy -->
-      </div>
-    </div>
+      </section>
 
     </main>
   </div>
 
-  <!-- Modal Thêm/Sửa Đơn Hàng -->
-  <div id="orderModal" class="modal-overlay">
-    <div class="modal">
-      <div class="modal-header">
-        <h3 id="modalTitle" class="modal-title">Thêm đơn hàng Mới</h3>
-        <button class="modal-close" id="btnCloseModal">&times;</button>
-      </div>
-      <form id="orderForm">
-        <input type="hidden" id="orderId">
-        <div class="modal-body">
-          <div class="form-row-2">
-            <div class="form-group">
-              <label for="formName">Tên người nhận</label>
-              <input type="text" id="formName" required placeholder="Nguyễn Văn A">
-            </div>
-            <div class="form-group">
-              <label for="formPhone">Số điện thoại</label>
-              <input type="text" id="formPhone" required placeholder="0912345678">
-            </div>
-          </div>
-          <div class="form-row-2">
-            <div class="form-group">
-              <label for="formCode">Mã đơn hàng</label>
-              <input type="text" id="formCode" placeholder="DH001">
-            </div>
-            <div class="form-group">
-              <label for="formCod">Số tiền COD</label>
-              <input type="text" id="formCod" placeholder="200000" value="0">
-            </div>
-          </div>
-          <div class="form-row-2">
-            <div class="form-group">
-              <label for="formDate">ngày tạo</label>
-              <input type="date" id="formDate" required>
-            </div>
-            <div class="form-group">
-              <label for="formPlatform">Đơn vị vận chuyển</label>
-              <select id="formPlatform">
-                <option value="">Chưa xác định</option>
-                <option value="vnpost">VNPost</option>
-                <option value="jt">J&T Express</option>
-              </select>
-            </div>
-          </div>
-          <div class="form-row-2">
-            <div class="form-group">
-              <label for="formCollectFee">Thu cước ship</label>
-              <select id="formCollectFee">
-                <option value="false">Không thu CướC</option>
-                <option value="true">C thu CướC</option>
-              </select>
-            </div>
-          </div>
-          <div class="form-group">
-            <label for="formAddress">Địa chỉ Chi tiếtết</label>
-            <textarea id="formAddress" rows="3" required placeholder="Số nh, ngõ/đườngõ, Phường/X, Quận/Huyện, Tỉnh/Thnh phố"></textarea>
-          </div>
-          <!-- Lịch sử tách đơn của đơn này -->
-          <div id="orderHistorySection" style="display:none;margin-top:12px;border-top:1px solid var(--border);padding-top:12px">
-            <div style="font-size:12px;font-weight:600;color:var(--text-p);margin-bottom:8px;display:flex;align-items:center;gap:6px;cursor:pointer" id="orderHistoryToggle">
-               Lịch sử tách đơn <span id="orderHistoryCount" style="font-size:11px;color:var(--text-s);font-weight:500"></span>
-              <span id="orderHistoryArrow" style="margin-left:auto;font-size:10px;color:var(--text-s);transition:transform .2s">▼</span>
-            </div>
-            <div id="orderHistoryContent" style="max-height:260px;overflow-y:auto;display:flex;flex-direction:column;gap:6px"></div>
-          </div>
-        </div>
-        <div class="modal-footer">
-          <button type="button" class="btn btn-secondary" id="btnCancelModal">Hủy bỏ</button>
-          <button type="submit" class="btn btn-primary">XC nhận lưu</button>
-        </div>
-      </form>
-    </div>
-  </div>
-
-  <!-- Modal xC nhận xa -->
-  <div id="deleteConfirmModal" class="modal-overlay">
-    <div class="modal" style="max-width:400px">
-      <div class="modal-header">
-        <h3 class="modal-title">XC nhận xa</h3>
-        <button class="modal-close" id="btnCloseDelModal">&times;</button>
-      </div>
-      <div class="modal-body">
-        <p>Bạn C chắC chắn muốn xa đơn hàng này? Thao tác này không thể hon tC.</p>
-      </div>
-      <div class="modal-footer">
-        <button type="button" class="btn btn-secondary" id="btnCancelDelModal">Hủy</button>
-        <button type="button" class="btn btn-danger" id="btnConfirmDelOrder">Xa đơn hàng</button>
-      </div>
-    </div>
-  </div>
-
-  <!-- Modal xC nhận chung -->
-  <div id="genericConfirmModal" class="modal-overlay">
-    <div class="modal" style="max-width:440px">
-      <div class="modal-header">
-        <h3 class="modal-title" id="genericConfirmTitle">XC nhận</h3>
-        <button class="modal-close" id="btnCloseGenericConfirm">&times;</button>
-      </div>
-      <div class="modal-body" id="genericConfirmBody">
-        <p id="genericConfirmMessage"></p>
-      </div>
-      <div class="modal-footer">
-        <button type="button" class="btn btn-secondary" id="btnCancelGenericConfirm">Hủy</button>
-        <button type="button" class="btn btn-primary" id="btnOkGenericConfirm">Đồngõ </button>
-      </div>
-    </div>
-  </div>
-
-  <!-- Modal xC nhận xa hàng loạt -->
-  <div id="bulkDeleteConfirmModal" class="modal-overlay">
-    <div class="modal" style="max-width:420px">
-      <div class="modal-header">
-        <h3 class="modal-title">XC nhận xa hàng loạt</h3>
-        <button class="modal-close" id="btnCloseBulkDelModal">&times;</button>
-      </div>
-      <div class="modal-body">
-        <p>Bạn C chắC chắn muốn xa <strong id="bulkDeleteCount">0</strong> đơn hàng đ chọn? Thao tác này không thể hon tC.</p>
-      </div>
-      <div class="modal-footer">
-        <button type="button" class="btn btn-secondary" id="btnCancelBulkDelModal">Hủy</button>
-        <button type="button" class="btn btn-danger" id="btnConfirmBulkDelete">Xa hàng loạt</button>
-      </div>
-    </div>
-  </div>
-
-  <!-- Modal Chỉnh sửa Khách hàng (Customer Modal) -->
-  <div id="customerModal" class="modal-overlay">
-    <div class="modal" style="max-width:500px">
-      <div class="modal-header">
-        <h3 class="modal-title">Chỉnh sửa thàng tin khách hàng</h3>
-        <button class="modal-close" id="btnCloseCustomerModal">&times;</button>
-      </div>
-      <div class="modal-body">
-        <input type="hidden" id="custPhoneHidden">
-        <div style="display:flex;flex-direction:column;gap:4px">
-          <div class="form-group">
-            <label>Tên khách hàng</label>
-            <input type="text" id="custNameInput" readonly style="background:var(--bg);cursor:not-allowed;opacity:0.8">
-          </div>
-          <div class="form-group">
-            <label>Số điện thoại</label>
-            <input type="text" id="custPhoneInput" readonly style="background:var(--bg);cursor:not-allowed;opacity:0.8">
-          </div>
-          <div class="form-group">
-            <label>Link Facebook</label>
-            <input type="text" id="custFbInput" placeholder="V dụ: https://facebook.com/username hoặc link C nhn">
-            <span style="font-size:11px;color:var(--text-s);margin-top:4px;display:block">Nhập link profile để hỗ trợ CSKH mở Messenger chat nhanh.</span>
-          </div>
-          <div class="form-group">
-            <label>Phn loại / Nhn (Tags)</label>
-            <select id="custTagsSelect">
-              <option value="">-- Chọn nhn phn loại --</option>
-              <option value="Khách sỉ">Khách sỉ</option>
-              <option value="Cần xC nhận">Cần gọi điện xC nhận</option>
-              <option value="Kh tênh">Khách kh tênh</option>
-              <option value="Bom hàng">Cảnh bo bngõ hàng (BOM)</option>
-              <option value="Tri n">Khách Cần tri n</option>
-            </select>
-          </div>
-          <div class="form-group">
-            <label>ghi chú chăm sóc</label>
-            <textarea id="custNotesInput" rows="3" placeholder="Nhập lịch sử trao đổi, ghi chú đặC th..."></textarea>
-          </div>
-        </div>
-      </div>
-      <div class="modal-footer">
-        <button type="button" class="btn btn-secondary" id="btnCancelúcustomerModal">Hủy bỏ</button>
-        <button type="button" class="btn btn-primary" id="btnSaveCustomerModal">Lưu ý: thàng tin</button>
-      </div>
-    </div>
-
-  </div>
-
-  <!-- Modal Lịch sử mua hàng của khách -->
-  <div id="customerOrdersModal" class="modal-overlay">
-    <div class="modal" style="max-width:640px; width:92%">
-      <div class="modal-header">
-        <h3 class="modal-title" id="customerOrdersModalTitle">Lịch sử mua hàng</h3>
-        <button class="modal-close" id="btnCloseCustomerOrdersModal">&times;</button>
-      </div>
-      <div class="modal-body" style="max-height:55vh; overflow-y:auto; padding:0">
-        <div style="display:flex; align-items:center; gap:10px; padding:16px 20px; border-bottom:1px solid var(--border)">
-          <div style="width:40px;height:40px;border-radius:50%;background:var(--primary);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:16px;flex-shrink:0" id="custOrdersAvatar">A</div>
-          <div>
-            <div id="custOrdersName" style="font-weight:600;font-size:15px;color:var(--text-p)"></div>
-            <div id="custOrdersPhone" style="font-size:13px;color:var(--text-s)"></div>
-          </div>
-          <div style="margin-left:auto;text-align:right;font-size:13px;color:var(--text-s)">
-            <div><strong id="custOrdersTotalúcount" style="font-size:18px;color:var(--text-p)">0</strong> đơn</div>
-            <div>Tổng: <strong id="custOrdersTotalúcod" style="color:var(--success)">0₫</strong></div>
-          </div>
-        </div>
-        <div id="customerOrdersList" style="display:flex;flex-direction:column"></div>
-      </div>
-      <div class="modal-footer">
-        <button type="button" class="btn btn-secondary" id="btnCloseCustomerOrdersModal2">Đngõ</button>
-      </div>
-    </div>
-  </div>
-
-  <!-- Modal Sửa đơn (Bulk Edit) -->
-  <div id="bulkEditModal" class="modal-overlay">
-    <div class="modal">
-      <div class="modal-header">
-        <h3 class="modal-title">Sửa đơn hàng loạt</h3>
-        <button class="modal-close" id="btnCloseBulkModal">&times;</button>
-      </div>
-      <form id="bulkEditForm">
-        <input type="hidden" id="bulkEditId">
-        <div class="modal-body">
-          <details id="bulkRawTextDetails" style="margin-bottom:12px;background:#F8FAFC;border:1px solid var(--border);border-radius:8px;padding:8px 12px;font-size:12px">
-            <summary style="cursor:pointer;font-weight:600;color:var(--text-s);user-select:none"> Thàng tin đơn th</summary>
-            <pre id="bulkRawTextDisplay" style="margin:8px 0 0;white-space:pre-wrap;word-break:break-word;font-size:11px;color:var(--text-s);font-family:monospace;max-height:120px;overflow-y:auto;line-height:1.5"></pre>
-          </details>
-          <div class="form-row-2">
-            <div class="form-group">
-              <label for="bulkName">Tên người nhận</label>
-              <input type="text" id="bulkName" required placeholder="Nguyễn Văn A">
-            </div>
-            <div class="form-group">
-              <label for="bulkPhone">Số điện thoại</label>
-              <input type="text" id="bulkPhone" required placeholder="0912345678">
-            </div>
-          </div>
-          <div class="form-row-2">
-            <div class="form-group">
-              <label for="bulkCode">Mã đơn hàng</label>
-              <input type="text" id="bulkCode" placeholder="DH001">
-            </div>
-            <div class="form-group">
-              <label for="bulkTrackingCode">Mã vận đơn</label>
-              <input type="text" id="bulkTrackingCode" placeholder="VD: VN123456789">
-            </div>
-          </div>
-          <div class="form-row-2">
-            <div class="form-group">
-              <label for="bulkCod">Số tiền COD</label>
-              <input type="text" id="bulkCod" placeholder="200000" value="0">
-            </div>
-          </div>
-          <div class="form-row-2">
-            <div class="form-group">
-              <label for="bulkNote">ghi chú</label>
-              <input type="text" id="bulkNote" placeholder="ghi chú thêm">
-            </div>
-            <div class="form-group">
-              <label for="bulkCollectFee">Thu cước ship</label>
-              <select id="bulkCollectFee">
-                <option value="false">Không thu CướC</option>
-                <option value="true">C thu CướC</option>
-              </select>
-            </div>
-          </div>
-          <div class="form-group">
-            <label for="bulkAddress" style="display:flex; justify-content:space-between; align-items:center;">
-              Địa chỉ Chi tiếtết
-              <div style="display:flex; gap:6px;">
-                <button type="button" id="btnBulkCleanAddress" class="btn btn-secondary" style="font-size:11px; padding:2px 8px;">✨ Chuẩn ho</button>
-                <button type="button" id="btnConvertOldToNewAddress" class="btn btn-secondary" style="font-size:11px; padding:2px 8px;"> Đổi Cũ - Mới</button>
-              </div>
-            </label>
-            <textarea id="bulkAddress" rows="3" required placeholder="Số nh, ngõ/đườngõ, Phường/X, Quận/Huyện, Tỉnh/Thnh phố"></textarea>
-          </div>
-          
-        </div>
-        <div class="modal-footer">
-          <button type="button" class="btn btn-secondary" id="btnCancelBulkModal">Hủy bỏ</button>
-          <button type="submit" class="btn btn-primary">Lưu ý: thay đổi</button>
-        </div>
-      </form>
-    </div>
-  </div>
-
-  <!-- Modal Lịch sử tách đơn hàng loạt -->
-  <div id="bulkHistoryModal" class="modal-overlay">
-    <div class="modal" style="max-width:600px; width:90%">
-      <div class="modal-header">
-        <h3 class="modal-title">Lịch sử tách đơn (thẻ tách)</h3>
-        <button class="modal-close" id="btnCloseBulkHistoryModal">&times;</button>
-      </div>
-      <div class="modal-body" style="max-height:60vh; overflow-y:auto">
-        <div id="bulkHistoryList" style="display:flex; flex-direction:column; gap:12px;"></div>
-      </div>
-      <div class="modal-footer">
-        <button type="button" class="btn btn-danger" id="btnClearBulkHistory">xoá lịch sử</button>
-        <button type="button" class="btn btn-secondary" id="btnCancelBulkHistoryModal">Đngõ</button>
-      </div>
-    </div>
-  </div>
-
-  <!-- Modal Đặt tên / chọn Thiết bị đồngõ bộ (Thay thế ID Cũ ➔ ID Mới) -->
-  <div id="deviceModal" class="modal-overlay" style="display:none">
-    <div class="modal" style="max-width:540px; width:92%">
-      <div class="modal-header">
-        <h3 class="modal-title">️ Đặt tên & chọn Thiết bị đồngõ bộ</h3>
-        <button class="modal-close" id="btnCloseDeviceModal">&times;</button>
-      </div>
-      <div class="modal-body" style="display:flex; flex-direction:column; gap:14px">
-        <p style="font-size:13px; color:var(--text-s); margin:0; line-height:1.5">
-          Vui lêngõ đặt tên cho Máy này hoặc chọn lại tên một Thiết bị Cũ trên Cloud để <strong>thay thế Mã ID Cũ bằng ID của Máy hiện tại</strong>.
-        </p>
-
-        <!-- Cch 1: Đặt tên Máy Mới -->
-        <div style="padding:14px; border:1px solid var(--border); border-radius:8px; background:var(--card)">
-          <label style="font-size:13px; font-weight:600; color:var(--text-p); display:block; margin-bottom:6px">➕ Cch 1: Đặt tên Thiết bị Mới</label>
-          <input type="text" id="modalNewDeviceNameInput" placeholder="V dụ: PC Kho 1, Laptop Yến, Máy Bn Hàng..." style="width:100%; padding:8px 12px; border:1px solid var(--border); border-radius:6px; font-size:13px; outline:none; box-sizing:border-box">
-        </div>
-
-        <!-- Cch 2: chọn Máy Cũ -->
-        <div id="modalExistingDeviceBox" style="padding:14px; border:1px solid var(--border); border-radius:8px; background:var(--card); display:none">
-          <label style="font-size:13px; font-weight:600; color:var(--text-p); display:block; margin-bottom:6px"> Cch 2: chọn Máy Cũ trên Cloud (Thay thế ID Cũ ➔ ID Mới)</label>
-          <select id="modalSelectExistingDevice" style="width:100%; padding:8px 12px; border:1px solid var(--border); border-radius:6px; font-size:13px; outline:none; background:var(--bg-p); color:var(--text-p); box-sizing:border-box">
-            <option value="">-- Chọn Thiết bị Cũ muốn dùng lại --</option>
-          </select>
-          <div style="font-size:11px; color:#64748B; margin-top:6px; line-height:1.4">
-            ⚠️ <em>Khi chọn Máy Cũ, hệ thống sẽ xóa ID Cũ trên Cloud và Cập nhật tên Máy đ bằng ID của Máy hiện tại.</em>
-          </div>
-        </div>
-      </div>
-      <div class="modal-footer" style="display:flex; justify-content:flex-end; gap:8px">
-        <button type="button" class="btn btn-secondary" id="btnCancelDeviceModal">Hủy</button>
-        <button type="button" class="btn btn-primary" id="btnConfirmDeviceModal"> XC nhận & Lưu</button>
-      </div>
-    </div>
-  </div>
-
-  <!-- Modal Thêm / Chỉnh sửa Shop -->
-  <div id="shopModal" class="modal-overlay">
-    <div class="modal" style="max-width:560px; width:92%">
-      <div class="modal-header">
-        <h3 class="modal-title" id="shopModalTitle">Thêm Shop Mới</h3>
-        <button class="modal-close" id="btnCloseShopModal">&times;</button>
-      </div>
-      <form id="shopForm">
-        <input type="hidden" id="shopId">
-        <div class="modal-body" style="display:flex;flex-direction:column;gap:12px">
-          <div class="form-row-2">
-            <div class="form-group">
-              <label for="shopName">Tên Shop / Cửa hàng (*)</label>
-              <input type="text" id="shopName" required placeholder="VD: Yến Clothes Store">
-            </div>
-            <div class="form-group">
-              <label for="shopCodePrefix">Tiền tố Mã đơn</label>
-              <input type="text" id="shopCodePrefix" placeholder="VD: YEN-">
-            </div>
-          </div>
-          <div class="form-row-2">
-            <div class="form-group">
-              <label for="shopSenderName">Tên người gửi (*)</label>
-              <input type="text" id="shopSenderName" required placeholder="Nguyễn Thị Yến">
-            </div>
-            <div class="form-group">
-              <label for="shopSenderPhone">SĐT người gửi (*)</label>
-              <input type="text" id="shopSenderPhone" required placeholder="0912345678">
-            </div>
-          </div>
-          <div class="form-group">
-            <label for="shopSenderAddress">Địa chỉ Kho gửi (*)</label>
-            <input type="text" id="shopSenderAddress" required placeholder="Số 15, ngõ 42 Đườngõ Giải Phàng, Phường Phươngõ Mai, Quận Đốngõ Đa, H Nội">
-          </div>
-          <div class="form-row-2">
-            <div class="form-group">
-              <label for="shopVnpostCode">Mã Khách hàng VNPost</label>
-              <input type="text" id="shopVnpostCode" placeholder="Mã KH VNPost">
-            </div>
-            <div class="form-group">
-              <label for="shopJtCode">Mã Hợp đồng J&T</label>
-              <input type="text" id="shopJtCode" placeholder="Mã HĐ J&T">
-            </div>
-          </div>
-          <div class="form-row-2">
-            <div class="form-group">
-              <label for="shopBankName">ngõn hàng nhận COD</label>
-              <input type="text" id="shopBankName" placeholder="VD: Vietcombank, MBBank...">
-            </div>
-            <div class="form-group">
-              <label for="shopBankAcc">Số tài khoản COD</label>
-              <input type="text" id="shopBankAcc" placeholder="Số TK ngõn hàng">
-            </div>
-          </div>
-          <div class="form-group" style="margin-top:4px">
-            <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-weight:500">
-              <input type="checkbox" id="shopIsDefault">
-              <span>Đặt làm Shop Mặc định của hệ thống</span>
-            </label>
-          </div>
-        </div>
-        <div class="modal-footer">
-          <button type="button" class="btn btn-secondary" id="btnCancelShopModal">Hủy bỏ</button>
-          <button type="submit" class="btn btn-primary">Lưu ý: Shop</button>
-        </div>
-      </form>
-    </div>
-  </div>
-
-  <!-- MODAL ĐĂNG NHẬP HỆ THỐNG -->
-  <div id="authModal" class="modal-overlay">
-    <div id="authCard">
-
-      <!-- Logo + Tiêu đề thương hiệu -->
-      <div id="authHead">
-        <div id="authLogo">
-          <div class="auth-logo-badge">
-            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/>
-              <polyline points="3.29 7 12 12 20.71 7"/>
-              <line x1="12" y1="22" x2="12" y2="12"/>
-            </svg>
-          </div>
-        </div>
-        <h2 id="authHeadTitle">Auto Fill Order</h2>
-        <p id="authHeadSub">Đăng nhập để đồng bộ dữ liệu & cấu hình</p>
-      </div>
-
-      <!-- Banner lỗi / thông báo -->
-      <div id="authBanner" role="alert"></div>
-
-      <form id="authForm">
-        <!-- ===== PANEL ĐĂNG NHẬP ===== -->
-        <div class="auth-panel" id="authPanelLogin">
-          
-          <div class="auth-step-dots" id="loginStepDots">
-            <div class="auth-step-dot active" title="Bước 1: Tài khoản"></div>
-            <div class="auth-step-dot" title="Bước 2: Mật khẩu"></div>
-          </div>
-
-          <!-- BƯỚC 1: Nhập email hoặc username -->
-          <div id="loginStepEmail">
-            <div class="af-group">
-              <label class="af-label" for="authEmail">Email hoặc tên đăng nhập</label>
-              <div class="af-ip-wrap">
-                <svg class="af-ip-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                  <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
-                  <circle cx="12" cy="7" r="4"/>
-                </svg>
-                <input class="af-input" type="text" id="authEmail" autocomplete="username" placeholder="name@company.com hoặc username" autofocus>
-              </div>
-              <span class="af-err" id="authEmailErr"></span>
-            </div>
-            <button class="af-submit" type="button" id="loginNextBtn">
-              <span class="af-btn-text">Tiếp theo <span>→</span></span>
-              <span class="af-btn-spin">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10" stroke-dasharray="31.4 31.4" stroke-linecap="round"><animateTransform attributeName="transform" type="rotate" from="0 12 12" to="360 12 12" dur=".8s" repeatCount="indefinite"/></circle></svg>
-              </span>
-            </button>
-          </div>
-
-          <!-- BƯỚC 2: Nhập Mật khẩu -->
-          <div id="loginStepPass" style="display:none">
-            <div id="loginEmailBadge">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
-              <span id="loginEmailDisplay"></span>
-              <button type="button" id="loginChangeEmailBtn">Đổi</button>
-            </div>
-            <div class="af-group">
-              <div class="af-label-row">
-                <label class="af-label" for="authPass">Mật khẩu</label>
-                <button class="af-link-inline" type="button" id="authForgotBtn">Quên mật khẩu?</button>
-              </div>
-              <div class="af-ip-wrap has-toggle">
-                <svg class="af-ip-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                  <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
-                  <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
-                </svg>
-                <input class="af-input" type="password" id="authPass" autocomplete="current-password" placeholder="Nhập mật khẩu của bạn">
-                <button class="af-toggle-pass" type="button" data-target="authPass" aria-label="Hiện/ẩn mật khẩu">
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
-                </button>
-              </div>
-              <span class="af-err" id="authPassErr"></span>
-            </div>
-            <button class="af-submit" type="submit" id="authLoginBtn">
-              <span class="af-btn-text">Đăng nhập</span>
-              <span class="af-btn-spin">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10" stroke-dasharray="31.4 31.4" stroke-linecap="round"><animateTransform attributeName="transform" type="rotate" from="0 12 12" to="360 12 12" dur=".8s" repeatCount="indefinite"/></circle></svg>
-              </span>
-            </button>
-          </div>
-
-          <div class="auth-bottom-nav">
-            <button class="af-link" type="button" id="authGotoRegister">Chưa có tài khoản? <strong>Đăng ký ngay</strong></button>
-          </div>
-          <!-- Rate limit warning -->
-          <div class="af-rl-warn" id="authRlWarn">
-            <strong>⚠️ Chế độ Offline</strong><br>
-            Supabase đang bị giới hạn tần suất. Dữ liệu sẽ hoạt động cục bộ, không đồng bộ lên Cloud.
-          </div>
-        </div>
-
-        <!-- ===== PANEL ĐĂNG KÝ ===== -->
-        <div class="auth-panel" id="authPanelRegister" style="display:none">
-          <div class="af-group">
-            <label class="af-label" for="authRegName">Họ và tên</label>
-            <div class="af-ip-wrap">
-              <svg class="af-ip-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
-                <circle cx="12" cy="7" r="4"/>
-              </svg>
-              <input class="af-input" type="text" id="authRegName" autocomplete="name" placeholder="Nguyễn Văn A">
-            </div>
-            <span class="af-err" id="authRegNameErr"></span>
-          </div>
-          <div class="af-group">
-            <label class="af-label" for="authRegEmail">Email</label>
-            <div class="af-ip-wrap">
-              <svg class="af-ip-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/>
-                <polyline points="22,6 12,13 2,6"/>
-              </svg>
-              <input class="af-input" type="email" id="authRegEmail" autocomplete="email" placeholder="name@company.com">
-            </div>
-            <span class="af-err" id="authRegEmailErr"></span>
-          </div>
-          <div class="af-group">
-            <label class="af-label" for="authRegPass">Mật khẩu (tối thiểu 6 ký tự)</label>
-            <div class="af-ip-wrap has-toggle">
-              <svg class="af-ip-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
-                <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
-              </svg>
-              <input class="af-input" type="password" id="authRegPass" autocomplete="new-password" placeholder="Tạo mật khẩu mạnh">
-              <button class="af-toggle-pass" type="button" data-target="authRegPass" aria-label="Hiện/ẩn Mật khẩu">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
-              </button>
-            </div>
-            <div class="pw-strength" id="regPwStrength">
-              <div class="pw-strength-bar"><div class="pw-strength-fill" id="pwFill1"></div></div>
-              <div class="pw-strength-bar"><div class="pw-strength-fill" id="pwFill2"></div></div>
-              <div class="pw-strength-bar"><div class="pw-strength-fill" id="pwFill3"></div></div>
-            </div>
-            <span class="af-err" id="authRegPassErr"></span>
-          </div>
-          <!-- Shop -->
-          <div class="af-shop-box">
-            <div class="af-shop-radio">
-              <label class="af-radio"><input type="radio" name="regShopType" value="create" checked> Tạo shop mới</label>
-              <label class="af-radio"><input type="radio" name="regShopType" value="join"> Nhập mã mời</label>
-            </div>
-            <div class="af-group" id="authRegShopGroup">
-              <label class="af-label" for="authRegShop">Tên shop</label>
-              <div class="af-ip-wrap">
-                <svg class="af-ip-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                  <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>
-                  <polyline points="9 22 9 12 15 12 15 22"/>
-                </svg>
-                <input class="af-input" type="text" id="authRegShop" placeholder="VD: Yến Clothes Store">
-              </div>
-              <span class="af-err" id="authRegShopErr"></span>
-            </div>
-            <div class="af-group" id="authRegInviteGroup" style="display:none">
-              <label class="af-label" for="authRegInvite">Mã mời</label>
-              <div class="af-ip-wrap">
-                <svg class="af-ip-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                  <rect x="2" y="7" width="20" height="14" rx="2" ry="2"/>
-                  <path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/>
-                </svg>
-                <input class="af-input" type="text" id="authRegInvite" placeholder="VD: YENSHOP-A8F2" style="text-transform:uppercase">
-              </div>
-              <span class="af-err" id="authRegInviteErr"></span>
-            </div>
-          </div>
-          <button class="af-submit" type="submit" id="authRegisterBtn">
-            <span class="af-btn-text">Đăng ký tài khoản</span>
-            <span class="af-btn-spin">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10" stroke-dasharray="31.4 31.4" stroke-linecap="round"><animateTransform attributeName="transform" type="rotate" from="0 12 12" to="360 12 12" dur=".8s" repeatCount="indefinite"/></circle></svg>
-            </span>
-          </button>
-          <div class="auth-bottom-nav">
-            <button class="af-link" type="button" id="authGotoLogin">Đã có tài khoản? <strong>Đăng nhập</strong></button>
-          </div>
-        </div>
-
-        <!-- ===== PANEL QUÊN MẬT KHẨU ===== -->
-        <div class="auth-panel" id="authPanelForgot" style="display:none">
-          <p class="af-desc">Nhập địa chỉ email đã đăng ký, hệ thống sẽ gửi hướng dẫn đặt lại mật khẩu cho bạn.</p>
-          <div class="af-group">
-            <label class="af-label" for="authForgotEmail">Email</label>
-            <div class="af-ip-wrap">
-              <svg class="af-ip-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/>
-                <polyline points="22,6 12,13 2,6"/>
-              </svg>
-              <input class="af-input" type="email" id="authForgotEmail" autocomplete="email" placeholder="name@company.com">
-            </div>
-            <span class="af-err" id="authForgotEmailErr"></span>
-          </div>
-          <button class="af-submit" type="submit" id="authForgotBtn2">
-            <span class="af-btn-text">Gửi liên kết đặt lại</span>
-            <span class="af-btn-spin">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10" stroke-dasharray="31.4 31.4" stroke-linecap="round"><animateTransform attributeName="transform" type="rotate" from="0 12 12" to="360 12 12" dur=".8s" repeatCount="indefinite"/></circle></svg>
-            </span>
-          </button>
-          <div class="auth-bottom-nav">
-            <button class="af-link" type="button" id="authBackLogin">← Quay lại đăng nhập</button>
-          </div>
-        </div>
-      </form>
-
-    </div>
-  </div>
-
-    </div>
-  </div>
-
-    <!-- CDN Libraries -->
+  <!-- CDN & SCRIPTS -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-  <script src="https://unpkg.com/@phosphor-icons/web"></script>
-
-  <!-- Core Cloud & Data Services -->
   <script src="supabase-config.js"></script>
   <script src="client.js"></script>
   <script src="auth.session.js"></script>
@@ -1808,89 +721,6 @@
   <script src="parser.js"></script>
   <script src="shops.js"></script>
   <script src="theme-manager.js"></script>
-
-  <!-- Option Modules -->
-  <script src="options-account.js"></script>
-  <script src="options-notifications.js"></script>
-  <script src="options-logs.js"></script>
-  <script src="options-address.js"></script>
-  <script src="options-config.js"></script>
-  <script src="options-init.js"></script>
-  <!-- ===== GLOBAL ORDER PAYLOAD DETAIL DRAWER (options) ===== -->
-  <div id="order-payload-drawer" style="position:fixed;inset:0;z-index:9999;display:none;" aria-hidden="true">
-    <!-- Backdrop -->
-    <div id="order-payload-backdrop" style="position:absolute;inset:0;background:rgba(0,0,0,0.45);backdrop-filter:blur(2px);transition:opacity 0.2s;opacity:0;"></div>
-    <!-- Panel -->
-    <div id="order-payload-panel" style="position:absolute;top:0;right:0;width:460px;max-width:calc(100vw - 1rem);height:100%;background:#fff;border-left:1px solid #e2e8f0;box-shadow:-8px 0 40px rgba(0,0,0,0.15);display:flex;flex-direction:column;transform:translateX(100%);transition:transform 0.3s ease;">
-      <!-- Header -->
-      <div style="padding:20px;border-bottom:1px solid #e2e8f0;background:#f8fafc;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;">
-        <div>
-          <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:var(--primary,#3C7363);font-family:monospace;">Order Payload Detail</div>
-          <h4 id="opd-title" style="margin:4px 0 0;font-size:14px;font-weight:700;color:#111;">Chi tiếtết Đơn Hàng</h4>
-        </div>
-        <button id="order-payload-close" aria-label="Đngõ" style="padding:6px;border:none;background:none;cursor:pointer;border-radius:6px;color:#64748b;font-size:20px;line-height:1;transition:background 0.15s;" onmouseover="this.style.background='#f1f5f9'" onmouseout="this.style.background='none'">✕</button>
-      </div>
-
-      <!-- Body -->
-      <div style="flex:1;overflow-y:auto;padding:20px;display:flex;flex-direction:column;gap:14px;font-size:12px;">
-
-        <!-- Row 1: Tên + COD -->
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
-          <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:12px;">
-            <div style="font-size:10px;font-weight:700;text-transform:uppercase;color:#94a3b8;letter-spacing:0.05em;">Khách Hàng</div>
-            <div id="opd-name" style="font-weight:700;color:#111;font-size:14px;margin-top:4px;"></div>
-            <div id="opd-phone" style="font-family:monospace;color:var(--primary,#3C7363);font-weight:600;margin-top:2px;"></div>
-          </div>
-          <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:12px;">
-            <div style="font-size:10px;font-weight:700;text-transform:uppercase;color:#94a3b8;letter-spacing:0.05em;">COD / Thu cước</div>
-            <div id="opd-cod" style="font-weight:700;color:#059669;font-size:14px;font-family:monospace;margin-top:4px;"></div>
-            <div id="opd-collectfee" style="color:#64748b;font-size:11px;margin-top:2px;"></div>
-          </div>
-        </div>
-
-        <!-- Address -->
-        <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:12px;">
-          <div style="font-size:10px;font-weight:700;text-transform:uppercase;color:#94a3b8;letter-spacing:0.05em;">Địa Chỉ Giao Hàng</div>
-          <div id="opd-address" style="color:#334155;line-height:1.5;margin-top:6px;"></div>
-        </div>
-
-        <!-- Row 3: Mã đơn + Mã vận đơn -->
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
-          <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:12px;">
-            <div style="font-size:10px;font-weight:700;text-transform:uppercase;color:#94a3b8;letter-spacing:0.05em;">Mã Đơn Hàng</div>
-            <div id="opd-ordercode" style="font-weight:600;color:#111;font-family:monospace;margin-top:4px;"></div>
-          </div>
-          <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:12px;">
-            <div style="font-size:10px;font-weight:700;text-transform:uppercase;color:#94a3b8;letter-spacing:0.05em;">Mã Vận Đơn</div>
-            <div style="display:flex;align-items:center;gap:6px;margin-top:4px;">
-              <span id="opd-waybill" style="font-weight:700;color:var(--primary,#3C7363);font-family:monospace;"></span>
-              <button id="opd-copy-waybill" style="display:none;padding:2px;border:none;background:none;cursor:pointer;color:#94a3b8;border-radius:4px;" title="Sao chép Mã vận đơn">⎘</button>
-            </div>
-          </div>
-        </div>
-
-        <!-- Row 4: Platform + Time -->
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
-          <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:12px;">
-            <div style="font-size:10px;font-weight:700;text-transform:uppercase;color:#94a3b8;letter-spacing:0.05em;">Nh Vận Chuyển</div>
-            <div id="opd-platform" style="font-weight:600;color:#111;margin-top:4px;"></div>
-          </div>
-          <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:12px;">
-            <div style="font-size:10px;font-weight:700;text-transform:uppercase;color:#94a3b8;letter-spacing:0.05em;">Thời Gian / Máy</div>
-            <div id="opd-time" style="color:#64748b;margin-top:4px;"></div>
-            <div id="opd-device" style="color:#94a3b8;font-size:10px;margin-top:2px;"></div>
-          </div>
-        </div>
-      </div>
-
-      <!-- Footer -->
-      <div style="padding:14px 20px;border-top:1px solid #e2e8f0;background:#f8fafc;display:flex;align-items:center;gap:8px;flex-shrink:0;flex-wrap:wrap;">
-        <button id="opd-btn-edit" style="padding:8px 16px;background:var(--primary,#3C7363);color:#fff;border:none;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;display:flex;align-items:center;gap:6px;transition:opacity 0.15s;" onmouseover="this.style.opacity='0.85'" onmouseout="this.style.opacity='1'">✏️ Chỉnh Sửa</button>
-        <button id="opd-btn-copy-all" style="padding:8px 16px;background:#fff;border:1px solid #e2e8f0;border-radius:8px;font-size:12px;font-weight:600;cursor:pointer;display:flex;align-items:center;gap:6px;color:#334155;transition:background 0.15s;" onmouseover="this.style.background='#f1f5f9'" onmouseout="this.style.background='#fff'">⎘ Sao Chp</button>
-        <button id="opd-btn-delete" style="margin-left:auto;padding:8px 16px;background:#fff0f0;border:1px solid #fca5a5;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;color:#dc2626;transition:background 0.15s;" onmouseover="this.style.background='#fee2e2'" onmouseout="this.style.background='#fff0f0'">️ Xa</button>
-      </div>
-    </div>
-  </div>
+  <script src="app.js"></script>
 </body>
 </html>
-
