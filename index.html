@@ -617,35 +617,83 @@
       </section>
 
       <!-- ======================================================== -->
-      <!-- TAB 4: STAFF MANAGEMENT & SHOP RBAC (100% REAL DATABASE) -->
+      <!-- TAB 4: STAFF MANAGEMENT & SHOP RBAC (COMMERCIAL GRADE)   -->
       <!-- ======================================================== -->
       <section id="tab-staff" class="tab-content">
         <div class="page-hdr">
           <div>
             <h1>Quản Lý Nhân Viên & Phân Quyền Shop</h1>
-            <p>Cấp tài khoản, phân quyền thao tác, đổi mật khẩu và quản lý tài khoản gắn với Shop.</p>
+            <p>Kiểm soát toàn diện tài khoản, chủ sở hữu, phân quyền chi tiết và cấp phát tài khoản nhân sự gắn với Cửa hàng.</p>
           </div>
-          <button class="btn btn-primary btn-sm" id="btnOpenAddStaffModal">
-            <i class="ph ph-user-plus"></i> + Cấp Tài Khoản Nhân Viên Mới
-          </button>
+          <div style="display:flex; gap:8px;">
+            <button class="btn btn-secondary btn-sm" id="btnRefreshStaffList" title="Tải lại danh sách nhân sự">
+              <i class="ph ph-arrows-clockwise"></i> Làm mới
+            </button>
+            <button class="btn btn-primary btn-sm" id="btnOpenAddStaffModal">
+              <i class="ph ph-user-plus"></i> + Cấp Tài Khoản Nhân Viên Mới
+            </button>
+          </div>
         </div>
 
+        <!-- SHOP IDENTITY & TEAM SUMMARY CARDS -->
+        <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap:14px; margin-bottom:16px;">
+          <!-- Card 1: Shop Name & Code -->
+          <div class="card" style="padding:16px; border-left: 4px solid #4F46E5;">
+            <div style="font-size:11px; font-weight:700; color:var(--text-s); text-transform:uppercase; margin-bottom:4px;"><i class="ph ph-storefront text-indigo-500"></i> Cửa Hàng Đang Quản Lý</div>
+            <div id="staffTabShopName" style="font-size:16px; font-weight:800; color:var(--text); margin-bottom:4px;">Shop Lũa Thủy Sinh</div>
+            <div style="font-size:11px; color:var(--text-s);">Mã Shop: <code id="staffTabShopCode" style="font-weight:700; color:var(--primary);">SHOP-VNPOST-01</code></div>
+          </div>
+
+          <!-- Card 2: Shop Owner Details -->
+          <div class="card" style="padding:16px; border-left: 4px solid #F59E0B;">
+            <div style="font-size:11px; font-weight:700; color:var(--text-s); text-transform:uppercase; margin-bottom:4px;"><i class="ph ph-crown text-amber-500"></i> Chủ Sở Hữu (Owner)</div>
+            <div id="staffTabOwnerName" style="font-size:16px; font-weight:800; color:var(--text); margin-bottom:4px;">Nguyễn Văn Tài</div>
+            <div id="staffTabOwnerEmail" style="font-size:11px; color:var(--text-s);">tai@luathuysinh.vn • 0908.066.466</div>
+          </div>
+
+          <!-- Card 3: Team Scale -->
+          <div class="card" style="padding:16px; border-left: 4px solid #10B981;">
+            <div style="font-size:11px; font-weight:700; color:var(--text-s); text-transform:uppercase; margin-bottom:4px;"><i class="ph ph-users text-emerald-500"></i> Quy Mô Nhân Sự</div>
+            <div id="staffTabTotalCount" style="font-size:16px; font-weight:800; color:#10B981; margin-bottom:4px;">0 Tài Khoản</div>
+            <div id="staffTabRoleBreakdown" style="font-size:11px; color:var(--text-s);">1 Chủ shop • 0 Quản lý • 0 Nhân viên</div>
+          </div>
+
+          <!-- Card 4: Plan & Quota Status -->
+          <div class="card" style="padding:16px; border-left: 4px solid #8B5CF6;">
+            <div style="font-size:11px; font-weight:700; color:var(--text-s); text-transform:uppercase; margin-bottom:4px;"><i class="ph ph-shield-check text-purple-500"></i> Hạn Ngạch & Gói Cước</div>
+            <div id="staffTabPlanBadge" style="font-size:16px; font-weight:800; color:#8B5CF6; margin-bottom:4px;">GÓI PRO (Tối đa 20 Acc)</div>
+            <div style="font-size:11px; color:var(--text-s);">Trạng thái: <span class="status-online" style="font-size:10px;">Đang hoạt động</span></div>
+          </div>
+        </div>
+
+        <!-- STAFF ACCOUNTS TABLE -->
         <div class="card">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px; flex-wrap:wrap; gap:10px;">
+            <div style="font-weight:800; font-size:14px; display:flex; align-items:center; gap:8px;">
+              <i class="ph ph-user-gear text-indigo-500"></i> Danh Sách Tài Khoản Trực Thuộc Shop
+              <span id="badgeStaffTableCount" class="badge" style="background:#EEF2FF; color:#4F46E5; font-size:11px;">0 Tài khoản</span>
+            </div>
+            <div style="display:flex; align-items:center; gap:8px;">
+              <input type="text" id="txtSearchStaff" class="field" placeholder="Tìm theo tên, email, sđt..." style="max-width:220px; font-size:12px; padding:6px 12px;">
+            </div>
+          </div>
+
           <div class="table-wrap">
             <table class="table" style="width:100%;">
               <thead>
                 <tr>
-                  <th>Họ và Tên</th>
+                  <th>Nhân Viên</th>
                   <th>Email / Username</th>
                   <th>Số Điện Thoại</th>
                   <th>Vai Trò (Role)</th>
+                  <th>Quyền Hạn Bóc Đơn</th>
                   <th>Ngày Tham Gia</th>
                   <th>Trạng Thái</th>
                   <th>Thao Tác</th>
                 </tr>
               </thead>
               <tbody id="tbodyStaffList">
-                <tr><td colspan="7" style="text-align:center; padding:20px; color:var(--text-s);">Đang nạp danh sách tài khoản từ Supabase...</td></tr>
+                <tr><td colspan="8" style="text-align:center; padding:24px; color:var(--text-s);">Đang nạp danh sách tài khoản từ Supabase...</td></tr>
               </tbody>
             </table>
           </div>
@@ -655,12 +703,12 @@
         <div class="card" style="margin-top:16px; background:var(--bg); border:1px dashed var(--border);">
           <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px;">
             <div>
-              <h4 style="font-size:13px; font-weight:700;"><i class="ph ph-ticket text-indigo-500"></i> Mã Mời Nhân Viên (Shop Invite Code)</h4>
-              <p style="font-size:11px; color:var(--text-s);">Nhân viên mới chỉ cần nhập mã này khi đăng ký để tự động gia nhập Shop với quyền STAFF.</p>
+              <h4 style="font-size:13px; font-weight:700;"><i class="ph ph-ticket text-indigo-500"></i> Mã Mời & Link Tham Gia Shop (Shop Invite Link)</h4>
+              <p style="font-size:11px; color:var(--text-s);">Nhân viên mới chỉ cần nhập mã này hoặc bấm link để tự động gia nhập Shop với quyền STAFF.</p>
             </div>
             <div style="display:flex; align-items:center; gap:8px;">
-              <code id="txtShopInviteCode" style="font-size:14px; font-weight:800; background:var(--card); padding:6px 12px; border-radius:6px; border:1px solid var(--border); color:var(--primary);">CHƯA TẠO</code>
-              <button class="btn btn-secondary btn-sm" id="btnCopyInviteCode"><i class="ph ph-copy"></i> Sao chép</button>
+              <code id="txtShopInviteCode" style="font-size:13px; font-weight:800; background:var(--card); padding:6px 12px; border-radius:6px; border:1px solid var(--border); color:var(--primary);">CHƯA TẠO</code>
+              <button class="btn btn-secondary btn-sm" id="btnCopyInviteCode"><i class="ph ph-copy"></i> Sao chép Mã</button>
               <button class="btn btn-primary btn-sm" id="btnGenerateInviteCode"><i class="ph ph-arrows-clockwise"></i> Tạo Mã Mới</button>
             </div>
           </div>

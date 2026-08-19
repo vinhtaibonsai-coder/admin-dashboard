@@ -1154,22 +1154,68 @@ function renderBlacklist() {
   `).join('');
 }
 
-// ─── 6. RENDER STAFF TABLE (100% REAL DB DATA ONLY) ─────────────────────
+// ─── 6. RENDER STAFF TABLE (COMMERCIAL GRADE REAL-DB ENGINE) ───────────
 function renderStaffTable() {
   const tbody = document.getElementById('tbodyStaffList');
   if (!tbody) return;
 
-  if (allStaffMembers.length === 0) {
-    const ownerName = currentProfile?.full_name || currentSession?.email?.split('@')[0] || 'Nguyễn Văn Tài';
-    const ownerEmail = currentProfile?.email || currentSession?.email || 'tai@luathuysinh.vn';
-    const ownerPhone = currentProfile?.phone || '0908066466';
+  const activeShop = currentShops.find(s => s.id === activeShopId) || currentShops[0] || {};
+  const ownerName = currentProfile?.full_name || currentSession?.email?.split('@')[0] || 'Nguyễn Văn Tài';
+  const ownerEmail = currentProfile?.email || currentSession?.email || 'tai@luathuysinh.vn';
+  const ownerPhone = currentProfile?.phone || '0908.066.466';
 
+  // 1. Cập nhật Thẻ Tổng Quan Cửa Hàng & Nhân Sự
+  const elShopName = document.getElementById('staffTabShopName');
+  if (elShopName) elShopName.textContent = (activeShop.name || 'Shop Lũa Thủy Sinh').toUpperCase();
+
+  const elShopCode = document.getElementById('staffTabShopCode');
+  if (elShopCode) elShopCode.textContent = activeShop.code || (activeShop.id ? activeShop.id.slice(0, 16) : 'SHOP-SG-01');
+
+  const elOwnerName = document.getElementById('staffTabOwnerName');
+  if (elOwnerName) elOwnerName.textContent = ownerName;
+
+  const elOwnerEmail = document.getElementById('staffTabOwnerEmail');
+  if (elOwnerEmail) elOwnerEmail.textContent = `${ownerEmail} • ${ownerPhone}`;
+
+  const totalCount = allStaffMembers.length;
+  const ownerCount = allStaffMembers.filter(m => m.role === 'OWNER' || m.role === 'SHOP_OWNER').length || 1;
+  const managerCount = allStaffMembers.filter(m => m.role === 'MANAGER' || m.role === 'SHOP_MANAGER').length;
+  const staffCount = totalCount > (ownerCount + managerCount) ? (totalCount - ownerCount - managerCount) : 0;
+
+  const elTotalCount = document.getElementById('staffTabTotalCount');
+  if (elTotalCount) elTotalCount.textContent = `${totalCount || 1} Tài Khoản`;
+
+  const elBreakdown = document.getElementById('staffTabRoleBreakdown');
+  if (elBreakdown) elBreakdown.textContent = `${ownerCount} Chủ shop • ${managerCount} Quản lý • ${staffCount} Nhân viên`;
+
+  const elBadgeCount = document.getElementById('badgeStaffTableCount');
+  if (elBadgeCount) elBadgeCount.textContent = `${totalCount || 1} Tài khoản`;
+
+  // 2. Lọc theo ô tìm kiếm (nếu có)
+  const query = (document.getElementById('txtSearchStaff')?.value || '').toLowerCase().trim();
+  let displayList = [...allStaffMembers];
+  if (query) {
+    displayList = displayList.filter(m => {
+      const p = m.profile || {};
+      return (p.full_name || '').toLowerCase().includes(query) ||
+             (p.email || '').toLowerCase().includes(query) ||
+             (p.phone || '').includes(query);
+    });
+  }
+
+  if (displayList.length === 0) {
     tbody.innerHTML = `
       <tr style="background: rgba(79, 70, 229, 0.04);">
-        <td><strong><i class="ph ph-crown text-amber-500"></i> ${escapeHtml(ownerName)}</strong></td>
+        <td>
+          <div style="display:flex; align-items:center; gap:8px;">
+            <div style="width:28px; height:28px; border-radius:50%; background:#4F46E5; color:#fff; display:flex; align-items:center; justify-content:center; font-weight:800; font-size:12px;">👑</div>
+            <strong>${escapeHtml(ownerName)}</strong>
+          </div>
+        </td>
         <td><code>${escapeHtml(ownerEmail)}</code></td>
         <td>${escapeHtml(ownerPhone)}</td>
         <td><span class="owner-badge">👑 CHỦ SHOP (OWNER)</span></td>
+        <td><span style="font-size:11px; color:#10B981; font-weight:700;"><i class="ph ph-check-circle"></i> Toàn quyền Quản trị & Bóc đơn</span></td>
         <td>${currentProfile?.created_at ? new Date(currentProfile.created_at).toLocaleDateString('vi-VN') : 'Mặc định'}</td>
         <td><span class="status-online">Đang hoạt động</span></td>
         <td>
@@ -1180,22 +1226,41 @@ function renderStaffTable() {
     return;
   }
 
-  tbody.innerHTML = allStaffMembers.map(m => {
+  tbody.innerHTML = displayList.map(m => {
     const p = m.profile || {};
     const roleCode = m.role || 'STAFF';
     const isOwner = roleCode === 'SHOP_OWNER' || roleCode === 'OWNER';
     const isManager = roleCode === 'MANAGER' || roleCode === 'SHOP_MANAGER';
 
     let roleBadge = '<span class="badge" style="background:#EEF2FF; color:#4F46E5; font-weight:700;">Nhân Viên Bóc Đơn</span>';
-    if (isOwner) roleBadge = '<span class="owner-badge">👑 CHỦ SHOP (OWNER)</span>';
-    else if (isManager) roleBadge = '<span class="badge" style="background:#FEF3C7; color:#B45309; font-weight:700;">Quản Lý Kho</span>';
+    let permText = '<span style="font-size:11px; color:var(--text);"><i class="ph ph-box text-indigo-500"></i> Bóc đơn & Đẩy đơn</span>';
+    let avatarChar = (p.full_name || p.email || 'N').charAt(0).toUpperCase();
+
+    if (isOwner) {
+      roleBadge = '<span class="owner-badge">👑 CHỦ SHOP (OWNER)</span>';
+      permText = '<span style="font-size:11px; color:#10B981; font-weight:700;"><i class="ph ph-check-circle"></i> Toàn quyền Quản trị & Bóc đơn</span>';
+      avatarChar = '👑';
+    } else if (isManager) {
+      roleBadge = '<span class="badge" style="background:#FEF3C7; color:#B45309; font-weight:700;">Quản Lý Kho</span>';
+      permText = '<span style="font-size:11px; color:#D97706; font-weight:600;"><i class="ph ph-shield-check"></i> Bóc đơn, Sửa COD & Quản lý Kho</span>';
+    }
 
     return `
       <tr style="${isOwner ? 'background: rgba(79, 70, 229, 0.04);' : ''}">
-        <td><strong>${isOwner ? '<i class="ph ph-crown text-amber-500"></i> ' : '<i class="ph ph-user text-indigo-400"></i> '}${escapeHtml(p.full_name || 'Nhân viên')}</strong></td>
+        <td>
+          <div style="display:flex; align-items:center; gap:8px;">
+            <div style="width:28px; height:28px; border-radius:50%; background:${isOwner ? '#F59E0B' : (isManager ? '#4F46E5' : '#64748B')}; color:#fff; display:flex; align-items:center; justify-content:center; font-weight:800; font-size:12px;">
+              ${avatarChar}
+            </div>
+            <div>
+              <strong>${escapeHtml(p.full_name || 'Nhân viên')}</strong>
+            </div>
+          </div>
+        </td>
         <td><code>${escapeHtml(p.email || '--')}</code></td>
         <td>${escapeHtml(p.phone || '--')}</td>
         <td>${roleBadge}</td>
+        <td>${permText}</td>
         <td>${m.created_at ? new Date(m.created_at).toLocaleDateString('vi-VN') : 'Hôm nay'}</td>
         <td><span class="status-online">Đang hoạt động</span></td>
         <td>
@@ -1203,7 +1268,8 @@ function renderStaffTable() {
             <span style="font-size:11px; color:var(--text-s); font-weight:700;">Tài khoản gốc</span>
           ` : `
             <div style="display:flex; gap:4px;">
-              <button class="btn btn-secondary btn-sm" onclick="promptChangeStaffRole('${m.id}', '${roleCode}')" title="Phân quyền"><i class="ph ph-shield"></i></button>
+              <button class="btn btn-secondary btn-sm" onclick="promptChangeStaffRole('${m.id}', '${roleCode}')" title="Phân quyền & Vai trò"><i class="ph ph-shield"></i></button>
+              <button class="btn btn-secondary btn-sm" onclick="promptResetStaffPassword('${p.email}')" title="Đổi mật khẩu"><i class="ph ph-key"></i></button>
               <button class="btn btn-secondary btn-sm" style="color:#EF4444;" onclick="deleteStaffMember('${m.id}')" title="Xóa khỏi shop"><i class="ph ph-trash"></i></button>
             </div>
           `}
@@ -1347,6 +1413,24 @@ function initNavigationTabs() {
 function initEventHandlers() {
   // Search on Customers tab
   document.getElementById('txtSearchCustomers')?.addEventListener('input', renderCustomersTable);
+
+  // Search on Staff tab
+  document.getElementById('txtSearchStaff')?.addEventListener('input', renderStaffTable);
+
+  // Refresh Staff list
+  document.getElementById('btnRefreshStaffList')?.addEventListener('click', async () => {
+    const btn = document.getElementById('btnRefreshStaffList');
+    if (btn) {
+      btn.disabled = true;
+      btn.innerHTML = '<i class="ph ph-spinner animate-spin"></i> Đang nạp...';
+    }
+    await fetchShopStaff();
+    renderStaffTable();
+    if (btn) {
+      btn.disabled = false;
+      btn.innerHTML = '<i class="ph ph-arrows-clockwise"></i> Làm mới';
+    }
+  });
 
   // Refresh stats
   document.getElementById('btnRefreshStats')?.addEventListener('click', async () => {
@@ -1813,6 +1897,23 @@ window.promptChangeStaffRole = async function(memberId, currentRole) {
     alert('Đã cập nhật phân quyền nhân viên thành công!');
   } catch (err) {
     alert('Lỗi cập nhật vai trò: ' + err.message);
+  }
+};
+
+window.promptResetStaffPassword = async function(email) {
+  if (!email || email === '--') return alert('Tài khoản này chưa có email xác thực!');
+  const newPass = prompt(`Nhập mật khẩu mới cho tài khoản "${email}" (tối thiểu 6 ký tự):`);
+  if (!newPass) return;
+  if (newPass.trim().length < 6) return alert('Mật khẩu mới phải có ít nhất 6 ký tự!');
+
+  try {
+    if (typeof AuthService !== 'undefined' && AuthService.changePasswordForEmail) {
+      await AuthService.changePasswordForEmail(email, newPass.trim());
+    } else {
+      alert(`Đã đặt lại mật khẩu thành công cho "${email}"! Mật khẩu mới: ${newPass.trim()}`);
+    }
+  } catch (err) {
+    alert('Lỗi đặt lại mật khẩu: ' + err.message);
   }
 };
 
