@@ -130,11 +130,8 @@ const ShopService = (function () {
         }
       }
 
-      // Danh sách kết quả cho user hiện tại
-      let finalList = isSysAdmin ? availableShops : (permittedShops.length > 0 ? permittedShops : availableShops);
-
-      // 4. Nếu chưa có bất kỳ shop nào -> Tự động khởi tạo Shop thực tế
-      if (finalList.length === 0 && userSession?.id) {
+      // 4. Chỉ tự động khởi tạo Shop nếu toàn bộ Database chưa có bất kỳ Shop nào
+      if (availableShops.length === 0 && userSession?.id) {
         let defaultName = 'Shop Lũa Thủy Sinh';
         if (userProfile?.full_name && userProfile.full_name !== 'Chủ Shop') {
           defaultName = 'Shop ' + userProfile.full_name;
@@ -157,6 +154,8 @@ const ShopService = (function () {
             role: 'OWNER'
           }).catch(() => {});
         }
+      } else if (finalList.length === 0 && availableShops.length > 0) {
+        finalList = availableShops;
       }
 
       // Lưu Cache

@@ -266,6 +266,12 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
       }
 
+      // Lọc theo từ khóa tìm kiếm
+      const searchKeyword = (document.getElementById('input-search-admin-shops')?.value || '').toLowerCase().trim();
+      if (data && searchKeyword) {
+        data = data.filter(s => (s.name || '').toLowerCase().includes(searchKeyword));
+      }
+
       if (!data || data.length === 0) {
         tbody.innerHTML = `
           <tr>
@@ -338,6 +344,56 @@ document.addEventListener('DOMContentLoaded', async () => {
       tbody.innerHTML = `<tr><td colspan="5" style="text-align: center; padding: 24px; color: #EF4444;">Lỗi khi tải dữ liệu Shop: ${e.message}</td></tr>`;
     }
   }
+
+  // ─── DỌN DẸP SHOP TRÙNG LẶP DO TỰ ĐỘNG SINH ────────────────────────────
+  document.getElementById('btn-clean-duplicate-shops')?.addEventListener('click', async () => {
+    if (!sb) return alert('Chưa kết nối Supabase Cloud!');
+    if (!confirm('Bạn có chắc muốn tự động xóa các Shop tạo trùng lặp (Shop admin) và chỉ giữ lại 1 bản ghi chính xác?')) return;
+
+    const btn = document.getElementById('btn-clean-duplicate-shops');
+    if (btn) { btn.disabled = true; btn.innerHTML = '<i class="ph ph-spinner animate-spin"></i> Đang dọn dẹp...'; }
+
+    try {
+      // 1. Lấy toàn bộ shops
+      const { data: allShops } = await sb.from('shops').select('id, name, created_at, owner_id').order('created_at', { ascending: true });
+      if (!allShops || allShops.length === 0) return alert('Không có shop nào để dọn dẹp!');
+
+      // 2. Tìm các shop trùng tên hoặc trùng 'Shop admin'
+      const seenNames = new Set();
+      const duplicateIds = [];
+
+      allShops.forEach(s => {
+        const cleanName = (s.name || '').trim().toLowerCase();
+        if (cleanName === 'shop admin' || seenNames.has(cleanName)) {
+          duplicateIds.push(s.id);
+        } else {
+          seenNames.add(cleanName);
+        }
+      });
+
+      if (duplicateIds.length === 0) {
+        alert('✅ Hệ thống không phát hiện Shop nào bị trùng lặp!');
+      } else {
+        // 3. Xóa các shop trùng lặp
+        await sb.from('shop_members').delete().in('shop_id', duplicateIds).catch(() => {});
+        const { error } = await sb.from('shops').delete().in('id', duplicateIds);
+        if (error) throw error;
+
+        alert(`✅ Đã dọn dẹp thành công ${duplicateIds.length} Cửa hàng trùng lặp!`);
+        localStorage.removeItem('af_cached_shops_list');
+        loadShops();
+        loadShopDropdown();
+      }
+    } catch (err) {
+      alert('Lỗi dọn dẹp shop: ' + err.message);
+    } finally {
+      if (btn) { btn.disabled = false; btn.innerHTML = '<i class="ph ph-broom"></i> Dọn Dẹp Shop Trùng Lặp'; }
+    }
+  });
+
+  document.getElementById('input-search-admin-shops')?.addEventListener('input', () => {
+    loadShops();
+  });
 
   // Khôi phục Shop đã bị xóa mềm
   window.restoreShop = async function (shopId, shopName) {
