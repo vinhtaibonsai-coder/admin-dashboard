@@ -165,22 +165,114 @@ async function loadAllShopData() {
 async function fetchShopsList() {
   if (!sb) return;
   try {
-    const { data: shops } = await sb.from('shops').select('id, name, code, is_active').order('name');
+    // 1. Lấy toàn bộ danh sách shop đang hoạt động từ Supabase
+    const { data: shops } = await sb
+      .from('shops')
+      .select('id, name, code, is_active, status, owner_id')
+      .is('deleted_at', null)
+      .order('name');
     currentShops = shops || [];
 
+    // 2. Tìm shop được gán với user hiện tại (qua shop_members, profiles, hoặc owner_id)
+    let userAssignedShop = null;
+    let userPermittedShops = [];
+
+    if (currentSession && currentSession.id) {
+      // Check 1: shop_members
+      const { data: memberRows } = await sb
+        .from('shop_members')
+        .select('shop_id, role, shops(id, name, code, status, owner_id)')
+        .eq('user_id', currentSession.id)
+        .limit(20);
+
+      if (memberRows && memberRows.length > 0) {
+        memberRows.forEach(m => {
+          if (m.shops) userPermittedShops.push(m.shops);
+          else if (m.shop_id) {
+            const found = currentShops.find(s => s.id === m.shop_id);
+            if (found) userPermittedShops.push(found);
+          }
+        });
+        if (userPermittedShops.length > 0) {
+          userAssignedShop = userPermittedShops[0];
+        }
+      }
+
+      // Check 2: profiles.shop_id
+      if (!userAssignedShop && currentProfile && currentProfile.shop_id) {
+        userAssignedShop = currentShops.find(s => s.id === currentProfile.shop_id);
+        if (userAssignedShop && !userPermittedShops.some(s => s.id === userAssignedShop.id)) {
+          userPermittedShops.push(userAssignedShop);
+        }
+      }
+
+      // Check 3: owner_id trong bảng shops
+      if (!userAssignedShop) {
+        const ownedShops = currentShops.filter(s => s.owner_id === currentSession.id);
+        if (ownedShops.length > 0) {
+          userAssignedShop = ownedShops[0];
+          userPermittedShops = [...userPermittedShops, ...ownedShops];
+        }
+      }
+    }
+
+    // 3. Quyết định Shop Kích Hoạt (Active Shop)
+    const savedShopId = localStorage.getItem('af_active_shop_id');
+    if (savedShopId && currentShops.some(s => s.id === savedShopId)) {
+      activeShopId = savedShopId;
+    } else if (userAssignedShop) {
+      activeShopId = userAssignedShop.id;
+    } else if (currentShops.length > 0) {
+      activeShopId = currentShops[0].id;
+    }
+
+    const activeShop = currentShops.find(s => s.id === activeShopId) || userAssignedShop || currentShops[0];
+    if (activeShop) {
+      activeShopId = activeShop.id;
+      localStorage.setItem('af_active_shop_id', activeShop.id);
+    }
+
+    // 4. Cập nhật Tên Shop thật lên Topbar & Sidebar Brand Sub
+    const titleEl = document.getElementById('topbarShopTitle');
+    const sideSubEl = document.getElementById('sidebarShopName');
+    const shopDisplayName = activeShop ? activeShop.name : 'AUTO FILL ORDER';
+
+    if (titleEl) {
+      titleEl.textContent = shopDisplayName.toUpperCase();
+    }
+    if (sideSubEl && activeShop) {
+      sideSubEl.textContent = '🏪 ' + activeShop.name;
+    }
+
+    // 5. Cập nhật Dropdown Chi nhánh / Shop
     const selectEl = document.getElementById('topbarShopSelect');
     if (selectEl) {
-      selectEl.innerHTML = '<option value="all">🌐 Toàn bộ Chi Nhánh & Đơn Hàng</option>' +
-        currentShops.map(s => `<option value="${s.id}" ${s.id === activeShopId ? 'selected' : ''}>🏪 ${escapeHtml(s.name)}</option>`).join('');
+      const isSysAdmin = currentProfile?.role === 'ADMIN' || 
+                         currentProfile?.role === 'MASTER_ADMIN' || 
+                         document.getElementById('topbarUserRoleBadge')?.textContent?.includes('ADMIN');
+
+      const displayList = (isSysAdmin || userPermittedShops.length === 0) ? currentShops : userPermittedShops;
+
+      let optionsHtml = '';
+      if (isSysAdmin) {
+        optionsHtml += `<option value="all" ${activeShopId === 'all' ? 'selected' : ''}>🌐 Toàn bộ Chi Nhánh & Đơn Hàng</option>`;
+      }
+      optionsHtml += displayList.map(s => `<option value="${s.id}" ${s.id === activeShopId ? 'selected' : ''}>🏪 ${escapeHtml(s.name)}</option>`).join('');
+      selectEl.innerHTML = optionsHtml;
 
       selectEl.onchange = (e) => {
         activeShopId = e.target.value;
+        localStorage.setItem('af_active_shop_id', activeShopId);
         const selectedShop = currentShops.find(s => s.id === activeShopId);
-        const titleEl = document.getElementById('topbarShopTitle');
         if (titleEl) {
-          titleEl.textContent = selectedShop ? selectedShop.name.toUpperCase() : 'SHOP COMMAND CENTER';
+          titleEl.textContent = selectedShop ? selectedShop.name.toUpperCase() : 'TOÀN BỘ CHI NHÁNH & ĐƠN HÀNG';
+        }
+        if (sideSubEl && selectedShop) {
+          sideSubEl.textContent = '🏪 ' + selectedShop.name;
         }
         filterAndRenderAll();
+        renderShopSettingsForm();
+        fetchShopStaff();
       };
     }
   } catch (err) {
@@ -993,7 +1085,7 @@ function renderStaffTable() {
 function renderShopSettingsForm() {
   const vnpostCfg = currentShopConfig.vnpost || {};
   const jtCfg = currentShopConfig.jt || {};
-  const shop = currentShopConfig.shopDetails || {};
+  const activeShop = currentShops.find(s => s.id === activeShopId) || currentShopConfig.shopDetails || currentShops[0] || {};
 
   const cfgShopName = document.getElementById('cfgShopName');
   const cfgSenderName = document.getElementById('cfgSenderName');
@@ -1008,20 +1100,20 @@ function renderShopSettingsForm() {
   const cfgBankAccountNo = document.getElementById('cfgBankAccountNo');
   const cfgBankAccountHolder = document.getElementById('cfgBankAccountHolder');
 
-  if (cfgShopName) cfgShopName.value = shop.name || 'Shop Bonsai Tài Lộc';
-  if (cfgSenderName) cfgSenderName.value = vnpostCfg.sender_name || 'Nguyễn Văn Tài';
-  if (cfgSenderPhone) cfgSenderPhone.value = vnpostCfg.sender_phone || '0987654321';
-  if (cfgSenderProvince) cfgSenderProvince.value = vnpostCfg.sender_province || 'TP. Hồ Chí Minh';
-  if (cfgSenderDistrict) cfgSenderDistrict.value = vnpostCfg.sender_district || 'Quận Tân Bình';
-  if (cfgSenderAddress) cfgSenderAddress.value = vnpostCfg.sender_address || '123 Hoàng Hoa Thám, Phường 13';
+  if (cfgShopName) cfgShopName.value = activeShop.name || '';
+  if (cfgSenderName) cfgSenderName.value = vnpostCfg.sender_name || '';
+  if (cfgSenderPhone) cfgSenderPhone.value = vnpostCfg.sender_phone || '';
+  if (cfgSenderProvince) cfgSenderProvince.value = vnpostCfg.sender_province || '';
+  if (cfgSenderDistrict) cfgSenderDistrict.value = vnpostCfg.sender_district || '';
+  if (cfgSenderAddress) cfgSenderAddress.value = vnpostCfg.sender_address || '';
 
-  if (cfgVnpostCode) cfgVnpostCode.value = vnpostCfg.customer_code || 'CUST-VNP-12345';
-  if (cfgJtCode) cfgJtCode.value = jtCfg.customer_code || 'VIP-JT-998877';
+  if (cfgVnpostCode) cfgVnpostCode.value = vnpostCfg.customer_code || '';
+  if (cfgJtCode) cfgJtCode.value = jtCfg.customer_code || '';
   if (cfgOrderPrefix) cfgOrderPrefix.value = vnpostCfg.order_prefix || 'AF-';
 
-  if (cfgBankName) cfgBankName.value = vnpostCfg.bank_name || 'Vietcombank';
-  if (cfgBankAccountNo) cfgBankAccountNo.value = vnpostCfg.bank_account_no || '0123456789';
-  if (cfgBankAccountHolder) cfgBankAccountHolder.value = vnpostCfg.bank_account_holder || 'NGUYEN VAN TAI';
+  if (cfgBankName) cfgBankName.value = vnpostCfg.bank_name || '';
+  if (cfgBankAccountNo) cfgBankAccountNo.value = vnpostCfg.bank_account_no || '';
+  if (cfgBankAccountHolder) cfgBankAccountHolder.value = vnpostCfg.bank_account_holder || '';
 }
 
 // ─── 8. RENDER DEVICES TABLE ────────────────────────────────────────────
@@ -1149,6 +1241,8 @@ function initEventHandlers() {
     btn.disabled = true;
     btn.innerHTML = '<i class="ph ph-spinner animate-spin"></i> Đang lưu...';
 
+    const newShopName = document.getElementById('cfgShopName')?.value?.trim();
+
     const vnpostConfig = {
       sender_name: document.getElementById('cfgSenderName')?.value,
       sender_phone: document.getElementById('cfgSenderPhone')?.value,
@@ -1168,12 +1262,24 @@ function initEventHandlers() {
 
     try {
       if (sb) {
+        // 1. Cập nhật tên shop vào bảng shops
+        if (newShopName && activeShopId && activeShopId !== 'all') {
+          await sb.from('shops').update({ name: newShopName }).eq('id', activeShopId);
+          const sObj = currentShops.find(s => s.id === activeShopId);
+          if (sObj) sObj.name = newShopName;
+          const titleEl = document.getElementById('topbarShopTitle');
+          if (titleEl) titleEl.textContent = newShopName.toUpperCase();
+          const sideSubEl = document.getElementById('sidebarShopName');
+          if (sideSubEl) sideSubEl.textContent = '🏪 ' + newShopName;
+        }
+
+        // 2. Cập nhật cấu hình bưu cục
         await sb.from('carrier_configs').upsert([
           { carrier: 'vnpost', config: vnpostConfig },
           { carrier: 'jt', config: jtConfig }
         ], { onConflict: 'carrier' });
       }
-      alert('Đã lưu cấu hình Shop & Bưu Cục thành công vào Supabase! Extension Panel sẽ tự động nhận diện thông tin mới.');
+      alert('Đã lưu cấu hình Shop & Bưu Cục thành công vào Supabase! Tên shop và thông tin người gửi đã được cập nhật.');
     } catch (err) {
       alert('Lỗi lưu cấu hình: ' + err.message);
     } finally {
