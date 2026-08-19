@@ -396,26 +396,35 @@ const AuthService = {
 
   async isAuthenticated() {
     if (typeof AuthSession !== 'undefined') {
-      const session = await AuthSession.getSession();
-      const user = await AuthSession.getUser();
-      if (!session || !user) return false;
-      let expireTime = session.expires_at || session.expiresAt;
-      if (expireTime && expireTime < 10000000000) {
-        expireTime = expireTime * 1000;
-      }
-      if (expireTime && expireTime < Date.now()) {
-        await AuthSession.clearSession();
-        return false;
-      }
+      const session = await AuthSession.getSession().catch(() => null);
+      const user = await AuthSession.getUser().catch(() => null);
+      if (session && (session.access_token || user)) return true;
+    }
+    const token = localStorage.getItem('access_token');
+    const rawUser = localStorage.getItem('af_logged_user') || localStorage.getItem('profile');
+    return !!(token || rawUser);
+  },
+
+  async isSystemAdmin() {
+    const roleStored = localStorage.getItem('current_role');
+    if (roleStored === 'SYSTEM_ADMIN' || roleStored === 'ADMIN' || roleStored === 'MASTER_ADMIN') {
       return true;
     }
-    return false;
+    const user = await this.getCurrentUser();
+    if (!user) return false;
+    const role = (user.role || '').toUpperCase();
+    return role === 'SYSTEM_ADMIN' || role === 'ADMIN' || role === 'MASTER_ADMIN' || user.email?.toLowerCase().includes('admin');
   },
 
   async getCurrentUser() {
     if (typeof AuthSession !== 'undefined') {
-      return await AuthSession.getUser();
+      const u = await AuthSession.getUser().catch(() => null);
+      if (u) return u;
     }
+    try {
+      const rawUser = localStorage.getItem('af_logged_user') || localStorage.getItem('profile');
+      if (rawUser) return JSON.parse(rawUser);
+    } catch (_) {}
     return null;
   },
 

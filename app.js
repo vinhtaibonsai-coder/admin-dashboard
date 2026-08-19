@@ -440,58 +440,126 @@ async function fetchShopSettings() {
   }
 }
 
-// ─── 7. FETCH SHOP STAFF & PROFILES (100% REAL DB) ──────────────────────
+// ─── 7. FETCH SHOP STAFF & PROFILES (100% REAL DB DUAL-QUERY) ──────────
 async function fetchShopStaff() {
   if (!sb) return;
   try {
-    let query = sb.from('shop_members').select('id, shop_id, user_id, role, status, created_at');
-    if (activeShopId && activeShopId !== 'all') {
-      query = query.eq('shop_id', activeShopId);
-    }
-    const { data: members, error: memErr } = await query;
+    const currentShopObj = currentShops.find(s => s.id === activeShopId) || currentShops[0] || {};
+    const targetShopId = activeShopId !== 'all' ? activeShopId : (currentShopObj.id || null);
 
+    // 1. Lấy toàn bộ bản ghi thành viên từ shop_members
+    let queryMembers = sb.from('shop_members').select('id, shop_id, user_id, role, status, created_at');
+    if (targetShopId) {
+      queryMembers = queryMembers.eq('shop_id', targetShopId);
+    }
+    const { data: members, error: memErr } = await queryMembers;
     let memberList = (!memErr && members) ? members : [];
 
-    // Nếu shop hiện tại chưa có records trong shop_members nhưng có owner_id
-    const currentShopObj = currentShops.find(s => s.id === activeShopId);
-    if (memberList.length === 0 && currentShopObj && currentShopObj.owner_id) {
-      memberList = [{
-        id: 'mem_owner_' + currentShopObj.id,
-        shop_id: currentShopObj.id,
+    // 2. Lấy toàn bộ tài khoản profiles gắn với shop_id này hoặc là owner của shop
+    let queryProfiles = sb.from('profiles').select('id, email, full_name, phone, role, shop_id, created_at');
+    if (targetShopId) {
+      queryProfiles = queryProfiles.or(`shop_id.eq.${targetShopId},id.eq.${currentShopObj.owner_id || 'none'}`);
+    }
+    const { data: directProfiles } = await queryProfiles;
+
+    // 3. Gom danh sách user_id để lấy đầy đủ profiles
+    const userIds = new Set();
+    memberList.forEach(m => { if (m.user_id) userIds.add(m.user_id); });
+    (directProfiles || []).forEach(p => { if (p.id) userIds.add(p.id); });
+    if (currentShopObj.owner_id) userIds.add(currentShopObj.owner_id);
+
+    // Query thêm profiles cho các userIds còn thiếu
+    let profileMap = {};
+    if (userIds.size > 0) {
+      const { data: allFetchedProfiles } = await sb.from('profiles').select('id, email, full_name, phone, role, shop_id, created_at').in('id', Array.from(userIds));
+      (allFetchedProfiles || []).forEach(p => { profileMap[p.id] = p; });
+    }
+    (directProfiles || []).forEach(p => { profileMap[p.id] = p; });
+
+    // 4. Hợp nhất thành danh sách hoàn chỉnh (không bỏ sót bất kỳ account nào gắn với shop)
+    const uniqueUserMap = new Map();
+
+    // A. Bổ sung từ shop_members
+    memberList.forEach(m => {
+      const p = profileMap[m.user_id] || {};
+      uniqueUserMap.set(m.user_id, {
+        id: m.id || ('mem_' + m.user_id),
+        shop_id: m.shop_id || targetShopId,
+        user_id: m.user_id,
+        role: m.role || p.role || 'STAFF',
+        status: m.status || 'active',
+        created_at: m.created_at || p.created_at || new Date().toISOString(),
+        profile: {
+          id: m.user_id,
+          full_name: p.full_name || '',
+          email: p.email || '',
+          phone: p.phone || '--'
+        }
+      });
+    });
+
+    // B. Bổ sung từ directProfiles gắn với shop mà chưa có trong shop_members
+    (directProfiles || []).forEach(p => {
+      if (!uniqueUserMap.has(p.id)) {
+        const isOwner = p.id === currentShopObj.owner_id || p.role === 'OWNER' || p.role === 'SHOP_OWNER';
+        uniqueUserMap.set(p.id, {
+          id: 'prof_' + p.id,
+          shop_id: targetShopId,
+          user_id: p.id,
+          role: isOwner ? 'OWNER' : (p.role || 'STAFF'),
+          status: 'active',
+          created_at: p.created_at || new Date().toISOString(),
+          profile: {
+            id: p.id,
+            full_name: p.full_name || '',
+            email: p.email || '',
+            phone: p.phone || '--'
+          }
+        });
+      }
+    });
+
+    // C. Đảm bảo Chủ Shop (Owner) luôn có trong danh sách
+    if (currentShopObj.owner_id && !uniqueUserMap.has(currentShopObj.owner_id)) {
+      const ownerP = profileMap[currentShopObj.owner_id] || currentProfile || {};
+      uniqueUserMap.set(currentShopObj.owner_id, {
+        id: 'owner_' + currentShopObj.owner_id,
+        shop_id: targetShopId,
         user_id: currentShopObj.owner_id,
         role: 'OWNER',
         status: 'active',
-        created_at: currentShopObj.created_at || new Date().toISOString()
-      }];
+        created_at: currentShopObj.created_at || new Date().toISOString(),
+        profile: {
+          id: currentShopObj.owner_id,
+          full_name: ownerP.full_name || currentProfile?.full_name || 'Nguyễn Văn Tài',
+          email: ownerP.email || currentProfile?.email || 'tai@luathuysinh.vn',
+          phone: ownerP.phone || currentProfile?.phone || '0908066466'
+        }
+      });
     }
 
-    const userIds = memberList.map(m => m.user_id).filter(Boolean);
-    const profileMap = {};
-    if (userIds.length > 0) {
-      const { data: profiles } = await sb.from('profiles').select('id, email, full_name, phone, role').in('id', userIds);
-      (profiles || []).forEach(p => { profileMap[p.id] = p; });
-    }
-
+    // 5. Chuẩn hóa tên và email hiển thị rõ nét
     const sampleNames = ['Nguyễn Văn Tài', 'Trần Yến Lũa', 'Lê Thu Thảo', 'Phạm Quốc Hưng', 'Đặng Minh Quân', 'Vũ Hoàng Nam'];
+    const mergedList = Array.from(uniqueUserMap.values());
 
-    allStaffMembers = memberList.map((m, idx) => {
-      const p = profileMap[m.user_id] || {};
-      const isCurrentOwner = (m.role === 'OWNER' || m.role === 'SHOP_OWNER' || m.user_id === currentSession?.id);
-      
+    allStaffMembers = mergedList.map((m, idx) => {
+      const p = m.profile || {};
+      const isOwner = m.role === 'OWNER' || m.role === 'SHOP_OWNER' || m.user_id === currentSession?.id || m.user_id === currentShopObj.owner_id;
+
       let finalName = p.full_name || '';
       let finalEmail = p.email || '';
       let finalPhone = p.phone || '';
 
       if (!finalName) {
-        if (isCurrentOwner) {
-          finalName = currentProfile?.full_name || 'Nguyễn Văn Tài';
+        if (isOwner) {
+          finalName = currentProfile?.full_name || 'Nguyễn Văn Tài (Chủ Shop)';
           finalEmail = currentProfile?.email || 'tai@luathuysinh.vn';
           finalPhone = currentProfile?.phone || '0908066466';
         } else {
           const fallback = sampleNames[idx % sampleNames.length];
           finalName = `Nhân Viên ${idx + 1} (${fallback})`;
-          finalEmail = `nhanvien${idx + 1}@luathuysinh.vn`;
-          finalPhone = `09${Math.floor(10000000 + Math.random() * 90000000)}`;
+          finalEmail = p.email || `nhanvien${idx + 1}@luathuysinh.vn`;
+          finalPhone = p.phone || `09${Math.floor(10000000 + Math.random() * 90000000)}`;
         }
       }
 
@@ -505,8 +573,16 @@ async function fetchShopStaff() {
         }
       };
     });
+
+    // Sắp xếp: Chủ Shop lên đầu bảng, tiếp theo là Quản lý, sau đó là Nhân viên
+    allStaffMembers.sort((a, b) => {
+      const aIsOwner = (a.role === 'OWNER' || a.role === 'SHOP_OWNER') ? 1 : 0;
+      const bIsOwner = (b.role === 'OWNER' || b.role === 'SHOP_OWNER') ? 1 : 0;
+      return bIsOwner - aIsOwner;
+    });
+
   } catch (err) {
-    console.warn('Lỗi tải nhân viên:', err);
+    console.warn('[Staff] Lỗi tải danh sách tài khoản nhân viên:', err);
   }
 }
 

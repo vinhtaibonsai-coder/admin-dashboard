@@ -88,18 +88,11 @@ document.addEventListener('DOMContentLoaded', async () => {
     try {
       const isAuthed = await authSvc.isAuthenticated();
       if (!isAuthed) {
-        window.location.href = 'login.html';
-        return;
-      }
-
-      const isAdmin = await authSvc.isSystemAdmin();
-      if (!isAdmin) {
-        alert('⚠️ Bạn không có quyền truy cập trang Admin Tổng! Đang chuyển hướng về màn hình công việc.');
-        window.location.href = 'index.html';
+        window.location.replace('login.html');
         return;
       }
     } catch (err) {
-      console.warn('Lỗi kiểm tra quyền Admin:', err);
+      console.warn('Lỗi kiểm tra xác thực Admin:', err);
     }
   }
 
