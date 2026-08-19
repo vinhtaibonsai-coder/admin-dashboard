@@ -169,7 +169,7 @@ async function fetchShopsList() {
   }
 }
 
-// ─── 2. FETCH SUBMITTED ORDERS ──────────────────────────────────────────
+// ─── 2. FETCH SUBMITTED ORDERS & SMART DE-DUPLICATION ──────────────────
 async function fetchSubmittedOrders() {
   if (!sb) return;
   try {
@@ -180,7 +180,36 @@ async function fetchSubmittedOrders() {
       .limit(1000);
 
     if (!error && data) {
-      allSubmittedOrders = data;
+      // Smart De-duplication: Gom các bản ghi cùng 1 đơn hàng (trước & sau khi bưu điện cấp mã tracking)
+      const uniqueMap = new Map();
+
+      for (const order of data) {
+        const phone = String(order.phone || '').replace(/\D/g, '');
+        const name = (order.name || order.customer_name || '').trim().toLowerCase();
+        const code = (order.order_code || '').trim().toLowerCase();
+        const timeKey = order.submitted_at ? new Date(order.submitted_at).toISOString().slice(0, 16) : 'notime'; // cùng phút
+
+        // Khóa định danh đơn hàng
+        const key = code && code !== '—' ? `code_${code}` : `np_${phone}_${name}_${timeKey}`;
+
+        if (!uniqueMap.has(key)) {
+          uniqueMap.set(key, { ...order });
+        } else {
+          // Gộp thông tin: ưu tiên bản ghi có tracking_code
+          const existing = uniqueMap.get(key);
+          if (!existing.tracking_code && order.tracking_code) {
+            existing.tracking_code = order.tracking_code;
+          }
+          if (!existing.order_code && order.order_code) {
+            existing.order_code = order.order_code;
+          }
+          if (!existing.cod_amount && order.cod_amount) {
+            existing.cod_amount = order.cod_amount;
+          }
+        }
+      }
+
+      allSubmittedOrders = Array.from(uniqueMap.values());
     }
   } catch (err) {
     console.warn('Lỗi tải đơn đã lên:', err);
@@ -550,7 +579,10 @@ function renderRecentOrdersStream() {
     return `
       <tr>
         <td style="font-size:11px; color:var(--text-s);">${timeFormatted}</td>
-        <td><strong style="font-size:12px; color:var(--primary);">${escapeHtml(o.tracking_code || o.order_code || 'Chưa có mã')}</strong></td>
+        <td>
+          <div style="font-weight:800; color:var(--primary); font-size:12px;">${escapeHtml(o.tracking_code || o.order_code || 'Chưa có mã')}</div>
+          ${o.order_code && o.order_code !== o.tracking_code ? `<div style="font-size:10px; color:var(--text-s); font-weight:600;">Mã: ${escapeHtml(o.order_code)}</div>` : ''}
+        </td>
         <td>
           <div style="font-weight:700;">${escapeHtml(o.name || o.customer_name || 'Khách hàng')}</div>
           <div style="font-size:11px; color:var(--text-s);">${escapeHtml(o.phone || '--')}</div>
@@ -656,7 +688,8 @@ function renderOrdersTable() {
       <tr>
         <td><input type="checkbox" class="chk-order-row" data-id="${o.id}"></td>
         <td>
-          <strong style="color:var(--primary); font-size:13px;">${escapeHtml(o.tracking_code || o.order_code || 'AF-' + (o.id || '').slice(0, 6))}</strong>
+          <div style="font-weight:800; color:var(--primary); font-size:13px;">${escapeHtml(o.tracking_code || o.order_code || 'AF-' + (o.id || '').slice(0, 6))}</div>
+          ${o.order_code && o.order_code !== o.tracking_code ? `<div style="font-size:11px; color:var(--text-s); font-weight:600;"><i class="ph ph-tag"></i> Mã đơn: ${escapeHtml(o.order_code)}</div>` : ''}
         </td>
         <td>
           <div style="font-weight:700;">${escapeHtml(o.name || o.customer_name || 'Khách hàng')}</div>
