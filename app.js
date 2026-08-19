@@ -309,11 +309,11 @@ async function fetchShopsList() {
     // 6. Cập nhật Dropdown Chi nhánh / Shop
     const selectEl = document.getElementById('topbarShopSelect');
     if (selectEl) {
-      const isSysAdmin = currentProfile?.role === 'ADMIN' || 
+      const isSysAdmin = currentProfile?.role === 'SYSTEM_ADMIN' || 
                          currentProfile?.role === 'MASTER_ADMIN' || 
-                         document.getElementById('topbarUserRoleBadge')?.textContent?.includes('ADMIN');
+                         (typeof AuthService !== 'undefined' && typeof AuthService.isSystemAdmin === 'function' && await AuthService.isSystemAdmin().catch(() => false));
 
-      const displayList = (isSysAdmin || userPermittedShops.length === 0) ? currentShops : userPermittedShops;
+      const displayList = (isSysAdmin && currentShops.length > 0) ? currentShops : (userPermittedShops.length > 0 ? userPermittedShops : currentShops);
 
       let optionsHtml = '';
       if (isSysAdmin) {
@@ -1116,35 +1116,57 @@ function renderStaffTable() {
   const tbody = document.getElementById('tbodyStaffList');
   if (!tbody) return;
 
-  if (allStaffMembers.length === 0) {
-    tbody.innerHTML = `<tr><td colspan="7" style="text-align:center; padding:30px; color:var(--text-s);">Chưa có nhân viên nào được gán vào Shop này trong Database. Bấm nút phía trên để cấp tài khoản.</td></tr>`;
-    return;
+  let rowsHtml = '';
+
+  // 1. Luôn hiển thị Chủ Shop (Owner) đầu bảng
+  const ownerName = currentProfile?.full_name || currentSession?.email?.split('@')[0] || 'Chủ Shop';
+  const ownerEmail = currentProfile?.email || currentSession?.email || '--';
+  const ownerPhone = currentProfile?.phone || '--';
+
+  rowsHtml += `
+    <tr style="background: rgba(79, 70, 229, 0.04);">
+      <td><strong><i class="ph ph-crown text-amber-500"></i> ${escapeHtml(ownerName)}</strong></td>
+      <td><code>${escapeHtml(ownerEmail)}</code></td>
+      <td>${escapeHtml(ownerPhone)}</td>
+      <td><span class="owner-badge">👑 CHỦ SHOP (OWNER)</span></td>
+      <td>${currentProfile?.created_at ? new Date(currentProfile.created_at).toLocaleDateString('vi-VN') : 'Mặc định'}</td>
+      <td><span class="status-online">Đang hoạt động</span></td>
+      <td>
+        <span style="font-size:11px; color:var(--text-s); font-weight:700;">Tài khoản gốc</span>
+      </td>
+    </tr>
+  `;
+
+  // 2. Hiển thị danh sách nhân viên khác thuộc Shop
+  const otherMembers = allStaffMembers.filter(m => m.user_id !== currentSession?.id && m.profile?.email !== currentSession?.email);
+
+  if (otherMembers.length > 0) {
+    rowsHtml += otherMembers.map(m => {
+      const p = m.profile || {};
+      const roleCode = m.role || 'STAFF';
+      let roleBadge = '<span class="badge" style="background:#EEF2FF; color:#4F46E5; font-weight:700;">Nhân Viên Bóc Đơn</span>';
+      if (roleCode === 'MANAGER') roleBadge = '<span class="badge" style="background:#FEF3C7; color:#B45309; font-weight:700;">Quản Lý Kho</span>';
+
+      return `
+        <tr>
+          <td><strong>${escapeHtml(p.full_name || p.email?.split('@')[0] || 'Nhân viên')}</strong></td>
+          <td><code>${escapeHtml(p.email || '--')}</code></td>
+          <td>${escapeHtml(p.phone || '--')}</td>
+          <td>${roleBadge}</td>
+          <td>${m.created_at ? new Date(m.created_at).toLocaleDateString('vi-VN') : '--'}</td>
+          <td><span class="status-online">Hoạt động</span></td>
+          <td>
+            <div style="display:flex; gap:4px;">
+              <button class="btn btn-secondary btn-sm" onclick="promptChangeStaffRole('${m.id}', '${roleCode}')" title="Phân quyền"><i class="ph ph-shield"></i></button>
+              <button class="btn btn-secondary btn-sm" style="color:#EF4444;" onclick="deleteStaffMember('${m.id}')" title="Xóa khỏi shop"><i class="ph ph-trash"></i></button>
+            </div>
+          </td>
+        </tr>
+      `;
+    }).join('');
   }
 
-  tbody.innerHTML = allStaffMembers.map(m => {
-    const p = m.profile || {};
-    const roleCode = m.role || 'STAFF';
-    let roleBadge = '<span class="badge" style="background:#EEF2FF; color:#4F46E5; font-weight:700;">Nhân Viên Bóc Đơn</span>';
-    if (roleCode === 'SHOP_OWNER' || roleCode === 'OWNER') roleBadge = '<span class="owner-badge">CHỦ SHOP</span>';
-    else if (roleCode === 'MANAGER') roleBadge = '<span class="badge" style="background:#FEF3C7; color:#B45309; font-weight:700;">Quản Lý Kho</span>';
-
-    return `
-      <tr>
-        <td><strong>${escapeHtml(p.full_name || p.email?.split('@')[0] || 'Nhân viên')}</strong></td>
-        <td><code>${escapeHtml(p.email || '--')}</code></td>
-        <td>${escapeHtml(p.phone || '--')}</td>
-        <td>${roleBadge}</td>
-        <td>${m.created_at ? new Date(m.created_at).toLocaleDateString('vi-VN') : '--'}</td>
-        <td><span class="status-online">Hoạt động</span></td>
-        <td>
-          <div style="display:flex; gap:4px;">
-            <button class="btn btn-secondary btn-sm" onclick="promptChangeStaffRole('${m.id}', '${roleCode}')" title="Phân quyền"><i class="ph ph-shield"></i></button>
-            <button class="btn btn-secondary btn-sm" style="color:#EF4444;" onclick="deleteStaffMember('${m.id}')" title="Xóa khỏi shop"><i class="ph ph-trash"></i></button>
-          </div>
-        </td>
-      </tr>
-    `;
-  }).join('');
+  tbody.innerHTML = rowsHtml;
 }
 
 // ─── 7. RENDER SHOP SETTINGS FORM ───────────────────────────────────────
@@ -1166,20 +1188,23 @@ function renderShopSettingsForm() {
   const cfgBankAccountNo = document.getElementById('cfgBankAccountNo');
   const cfgBankAccountHolder = document.getElementById('cfgBankAccountHolder');
 
-  if (cfgShopName) cfgShopName.value = activeShop.name || '';
-  if (cfgSenderName) cfgSenderName.value = vnpostCfg.sender_name || '';
-  if (cfgSenderPhone) cfgSenderPhone.value = vnpostCfg.sender_phone || '';
-  if (cfgSenderProvince) cfgSenderProvince.value = vnpostCfg.sender_province || '';
-  if (cfgSenderDistrict) cfgSenderDistrict.value = vnpostCfg.sender_district || '';
-  if (cfgSenderAddress) cfgSenderAddress.value = vnpostCfg.sender_address || '';
+  const defaultOwnerName = currentProfile?.full_name || currentSession?.email?.split('@')[0] || 'Văn Tài';
+  const defaultOwnerPhone = currentProfile?.phone || '0908066466';
 
-  if (cfgVnpostCode) cfgVnpostCode.value = vnpostCfg.customer_code || '';
-  if (cfgJtCode) cfgJtCode.value = jtCfg.customer_code || '';
+  if (cfgShopName) cfgShopName.value = activeShop.name || 'Shop Lũa Thủy Sinh';
+  if (cfgSenderName) cfgSenderName.value = vnpostCfg.sender_name || defaultOwnerName;
+  if (cfgSenderPhone) cfgSenderPhone.value = vnpostCfg.sender_phone || defaultOwnerPhone;
+  if (cfgSenderProvince) cfgSenderProvince.value = vnpostCfg.sender_province || 'Bình Dương';
+  if (cfgSenderDistrict) cfgSenderDistrict.value = vnpostCfg.sender_district || 'Thuận An';
+  if (cfgSenderAddress) cfgSenderAddress.value = vnpostCfg.sender_address || '17/4 khu phố Tây, Phường Lái Thiêu';
+
+  if (cfgVnpostCode) cfgVnpostCode.value = vnpostCfg.customer_code || 'CUST-VNP-01';
+  if (cfgJtCode) cfgJtCode.value = jtCfg.customer_code || 'VIP-JT-01';
   if (cfgOrderPrefix) cfgOrderPrefix.value = vnpostCfg.order_prefix || 'AF-';
 
-  if (cfgBankName) cfgBankName.value = vnpostCfg.bank_name || '';
-  if (cfgBankAccountNo) cfgBankAccountNo.value = vnpostCfg.bank_account_no || '';
-  if (cfgBankAccountHolder) cfgBankAccountHolder.value = vnpostCfg.bank_account_holder || '';
+  if (cfgBankName) cfgBankName.value = vnpostCfg.bank_name || 'Vietcombank';
+  if (cfgBankAccountNo) cfgBankAccountNo.value = vnpostCfg.bank_account_no || '0123456789';
+  if (cfgBankAccountHolder) cfgBankAccountHolder.value = vnpostCfg.bank_account_holder || defaultOwnerName.toUpperCase();
 }
 
 // ─── 8. RENDER DEVICES TABLE ────────────────────────────────────────────
