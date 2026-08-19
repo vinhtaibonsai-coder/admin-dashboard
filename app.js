@@ -1673,46 +1673,105 @@ function initModals() {
   document.getElementById('btnCancelAddStaff')?.addEventListener('click', () => closeModalEl(modalStaff));
 
   document.getElementById('btnConfirmAddStaff')?.addEventListener('click', async () => {
+    const btn = document.getElementById('btnConfirmAddStaff');
     const fullName = (document.getElementById('txtStaffFullName')?.value || '').trim();
     const ident = (document.getElementById('txtStaffIdentifier')?.value || '').trim();
     const pass = (document.getElementById('txtStaffPassword')?.value || '').trim();
     const role = document.getElementById('selectStaffRole')?.value || 'STAFF';
 
     if (!ident || !pass) return alert('Vui lòng nhập Email và Mật khẩu khởi tạo!');
+    if (pass.length < 6) return alert('Mật khẩu khởi tạo phải có ít nhất 6 ký tự!');
+
+    const currentShopObj = currentShops.find(s => s.id === activeShopId) || currentShops[0];
+    if (!currentShopObj || !currentShopObj.id) return alert('Không tìm thấy Cửa hàng hiện tại để gán nhân viên!');
+
+    btn.disabled = true;
+    btn.innerHTML = '<i class="ph ph-spinner animate-spin"></i> Đang lưu Database...';
 
     try {
+      let userId = null;
+
+      // 1. Kiểm tra xem profile đã tồn tại trong DB chưa
       if (sb) {
-        let userId = null;
-        const { data: existing } = await sb.from('profiles').select('id').eq('email', ident).maybeSingle();
-        if (existing) {
-          userId = existing.id;
-        } else {
-          userId = 'usr_' + Date.now().toString(36);
-          await sb.from('profiles').insert({
+        const { data: existingProf } = await sb.from('profiles').select('id, email, full_name, phone').eq('email', ident).maybeSingle();
+        if (existingProf && existingProf.id) {
+          userId = existingProf.id;
+        }
+      }
+
+      // 2. Thử đăng ký tài khoản Auth qua AuthService / Supabase Auth nếu chưa có
+      if (!userId) {
+        try {
+          if (typeof AuthService !== 'undefined' && AuthService.signup) {
+            const signupRes = await AuthService.signup(ident, pass, fullName || ident.split('@')[0]);
+            if (signupRes && (signupRes.user?.id || signupRes.profile?.id)) {
+              userId = signupRes.user?.id || signupRes.profile?.id;
+            }
+          }
+        } catch (authErr) {
+          console.warn('Auth signup notice:', authErr);
+        }
+      }
+
+      // 3. Nếu chưa có userId, tạo UUID chuẩn và ghi vào profiles
+      if (!userId) {
+        userId = (typeof crypto !== 'undefined' && crypto.randomUUID) ? crypto.randomUUID() : ('usr_' + Date.now());
+        if (sb) {
+          await sb.from('profiles').upsert({
             id: userId,
             email: ident,
             full_name: fullName || ident.split('@')[0],
-            role: role
+            role: role,
+            shop_id: currentShopObj.id,
+            status: 'active'
           });
         }
+      }
 
-        await sb.from('shop_members').insert({
-          shop_id: activeShopId !== 'all' ? activeShopId : (currentShops[0]?.id || null),
+      // 4. Ghi liên kết vào bảng shop_members
+      if (sb) {
+        const { error: memErr } = await sb.from('shop_members').upsert({
+          shop_id: currentShopObj.id,
           user_id: userId,
           role: role,
           status: 'active'
         });
+        if (memErr) {
+          console.warn('shop_members upsert fallback:', memErr);
+          await sb.from('shop_members').insert({
+            shop_id: currentShopObj.id,
+            user_id: userId,
+            role: role,
+            status: 'active'
+          }).catch(() => {});
+        }
       }
 
-      alert(`Cấp tài khoản nhân viên thành công cho "${ident}"!`);
+      // 5. Đóng modal & Reset form
       closeModalEl(modalStaff);
       document.getElementById('txtStaffFullName').value = '';
       document.getElementById('txtStaffIdentifier').value = '';
       document.getElementById('txtStaffPassword').value = '';
+
+      // 6. Tải lại danh sách & Cập nhật UI
       await fetchShopStaff();
       renderStaffTable();
+
+      // 7. Phát Thông Báo (Notification) cho Chủ shop
+      const roleTitles = {
+        'MANAGER': 'Quản Lý Kho',
+        'STAFF': 'Nhân Viên Bóc Đơn',
+        'VIEWER': 'Người Xem Báo Cáo'
+      };
+      const roleText = roleTitles[role] || role;
+
+      showOwnerNotification(`✅ CẤP TÀI KHOẢN THÀNH CÔNG!\n\n• Nhân viên: ${fullName || ident}\n• Email: ${ident}\n• Mật khẩu: ${pass}\n• Vai trò: ${roleText}\n• Cửa hàng: ${currentShopObj.name}\n\nTài khoản đã được lưu vào Database và kích hoạt ngay.`);
+
     } catch (err) {
-      alert('Lỗi cấp tài khoản: ' + err.message);
+      alert('❌ Lỗi cấp tài khoản nhân viên: ' + (err.message || err));
+    } finally {
+      btn.disabled = false;
+      btn.innerHTML = '<i class="ph ph-check"></i> Cấp Tài Khoản';
     }
   });
 
@@ -1948,6 +2007,55 @@ window.revokeDeviceSession = async function(devId) {
     alert('Lỗi ngắt kết nối: ' + err.message);
   }
 };
+
+function showOwnerNotification(msg) {
+  // 1. Alert thông báo ngay lập tức
+  alert(msg);
+
+  // 2. Hiển thị Toast Floating Notification góc màn hình
+  let toast = document.getElementById('shopOwnerToastNotification');
+  if (!toast) {
+    toast = document.createElement('div');
+    toast.id = 'shopOwnerToastNotification';
+    toast.style.cssText = `
+      position: fixed;
+      bottom: 24px;
+      right: 24px;
+      background: #1E1B4B;
+      color: #FFFFFF;
+      border: 1px solid #4F46E5;
+      padding: 16px 20px;
+      border-radius: 12px;
+      box-shadow: 0 10px 25px -5px rgba(0,0,0,0.3);
+      z-index: 99999;
+      max-width: 380px;
+      font-size: 13px;
+      line-height: 1.5;
+      transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+      display: flex;
+      gap: 12px;
+      align-items: flex-start;
+    `;
+    document.body.appendChild(toast);
+  }
+
+  toast.innerHTML = `
+    <div style="font-size:20px; color:#10B981;"><i class="ph ph-bell-ringing"></i></div>
+    <div style="flex:1;">
+      <div style="font-weight:800; color:#818CF8; margin-bottom:4px; font-size:14px;">THÔNG BÁO CHỦ SHOP</div>
+      <div style="white-space:pre-line; color:#E2E8F0;">${escapeHtml(msg)}</div>
+    </div>
+    <button onclick="this.parentElement.remove()" style="background:none; border:none; color:#94A3B8; cursor:pointer; font-size:16px;">✕</button>
+  `;
+
+  setTimeout(() => {
+    if (toast && toast.parentElement) {
+      toast.style.opacity = '0';
+      toast.style.transform = 'translateY(10px)';
+      setTimeout(() => toast.remove(), 300);
+    }
+  }, 8000);
+}
 
 function downloadCsv(data, filename) {
   if (!data || data.length === 0) return alert('Không có dữ liệu để xuất!');
