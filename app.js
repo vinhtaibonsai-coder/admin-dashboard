@@ -247,7 +247,6 @@ async function fetchShopsList() {
   } catch (err) {
     console.warn('[Dashboard] Lỗi tải shop từ Supabase:', err);
   }
-  }
 
   // 3. BẮT SỰ KIỆN KHI NGƯỜI DÙNG CHỌN CHI NHÁNH MỚI
   if (selectEl) {
