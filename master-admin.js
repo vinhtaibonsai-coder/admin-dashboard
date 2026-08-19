@@ -574,7 +574,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     try {
       const { data: members, error } = await sb
         .from('shop_members')
-        .select('id, user_id, role_id, roles(code)')
+        .select('id, user_id, role')
         .eq('shop_id', shopId);
 
       if (error) throw error;

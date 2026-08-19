@@ -44,6 +44,7 @@ document.addEventListener('DOMContentLoaded', () => {
     return 'bg-red-100 text-red-700';
   };
 
+  const navTabShops = document.getElementById('nav-tab-shops');
   if (rightNavShops && navTabShops) {
     rightNavShops.addEventListener('click', () => { navTabShops.click(); document.getElementById('right-user-menu')?.classList.add('hidden', 'opacity-0', 'pointer-events-none'); });
   }
@@ -287,7 +288,7 @@ document.addEventListener('DOMContentLoaded', () => {
     try {
       const { data: members, error } = await sb
         .from('shop_members')
-        .select('id, user_id, role_id, roles(code)')
+        .select('id, user_id, role')
         .eq('shop_id', shopId);
 
       if (error) throw error;
