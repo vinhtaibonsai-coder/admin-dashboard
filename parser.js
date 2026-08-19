@@ -170,36 +170,78 @@
       return productItem;
     },
 
-    extractOrderCode(text, lines) {
+    extractOrderCode(text, lines, phones = []) {
       if (!text) return "";
       const orderCodes = [];
 
-      // Từ khóa nhận diện Mã sản phẩm / SKU (Đồng nghĩa KHÔNG PHẢI mã đơn hàng)
+      // Từ khóa nhận diện Mã sản phẩm / SKU
       const skuKeywords = /(?:size|màu|mau|xl|xxl|áo|quần|váy|đầm|hộp|chai|cái|chiếc|bao|túi|lọ|sp|sản\s*phẩm|kg|gram|gói|bịch|set|combo)/i;
 
+      // Từ khóa nhận diện Dòng Địa chỉ (Chung cư, Số nhà, Phòng, Tầng, Đường...) để không bóc nhầm số phòng thành mã đơn
+      const addressKeywords = /(?:chung\s*cư|căn\s*hộ|toà\s*nhà|tòa\s*nhà|tòa|toà|block|tầng|lầu|phòng|khu\s*đô\s*thị|kđt|đường|phố|ngõ|ngách|hẻm|kiệt|số\s*nhà|thôn|xóm|ấp|bản|tổ|kp|khu\s*phố|xã|phường|quận|huyện|thị\s*xã|thành\s*phố|tp\.|tp\s|tỉnh|hcm|hà\s*nội|hn|đà\s*nẵng)/i;
+
+      const isPhoneOrCod = (str) => {
+        const clean = str.replace(/[\s\.\-]/g, '');
+        const digits = str.replace(/\D/g, '');
+        if (/^(?:0|\+?84)[3|5|7|8|9]\d{8}$/.test(digits) || /^\d{10,11}$/.test(digits)) return true;
+        if (phones && phones.some(p => p && (clean.includes(p.replace(/\D/g, '')) || p.replace(/\D/g, '').includes(clean)))) return true;
+        if (/^(?:cod|thu\s*hộ|ship|cước|tiền)?\s*\d+k?$/i.test(str)) return true;
+        return false;
+      };
+
+      // Ưu tiên 1: Dòng độc lập chỉ chứa duy nhất mã đơn/mã hàng (ví dụ: dòng "E80.290" hoặc "DH-12345" hoặc "Mã: E80.290")
+      for (const l of lines) {
+        const trimmed = l.trim();
+        if (!trimmed) continue;
+        if (isPhoneOrCod(trimmed)) continue;
+
+        // Bắt mã đơn theo tiền tố rõ ràng ("mã:", "mã đơn:", "mã đh:", "order:", "dh:")
+        const explicitMatch = trimmed.match(/^(?:mã\s*đơn(?:\s*hàng)?(?:\s*là)?|mã\s*đh|mã\s*dh|mã\s*vận\s*đơn|mã\s*order|order\s*id|mã|dh)[:\s\-•]*([a-zA-Z0-9.\-_]{2,25})$/i);
+        if (explicitMatch && explicitMatch[1]) {
+          const candidate = explicitMatch[1].trim();
+          if (!/^(hàng|gửi|tới|số|vận|đơn|cước|ship|thu|cod)$/i.test(candidate) && !skuKeywords.test(candidate) && !isPhoneOrCod(candidate)) {
+            return candidate;
+          }
+        }
+
+        // Dòng đứng độc lập 100% khớp pattern mã (ví dụ: "E80.290", "VN123456789", "JT987654321", "DH100462959")
+        if (!addressKeywords.test(trimmed) && /^[A-Za-z0-9][A-Za-z0-9.\-_]{2,20}$/.test(trimmed)) {
+          if (!/\d+k$/i.test(trimmed) && !/^(ship|cod|vnd|vnđ|kg|g|size|free|freeship)$/i.test(trimmed) && !skuKeywords.test(trimmed)) {
+            // Loại trừ số căn hộ chung cư 3 cấp như B1.09.01 và loại trừ số thuần túy
+            if (!/^[A-Za-z]\d+\.\d+\.\d+/i.test(trimmed) && !/^\d+$/.test(trimmed)) {
+              return trimmed;
+            }
+          }
+        }
+      }
+
+      // Ưu tiên 2: Quét các dòng thông thường nhưng loại trừ dòng địa chỉ và dòng SĐT/COD
       lines.forEach(l => {
         const low = l.toLowerCase();
 
-        // Nếu dòng chứa từ khóa SKU sản phẩm (vd: "Mã áo A102 màu đỏ size L") -> Bỏ qua không lấy mã đơn
+        if (addressKeywords.test(low) || isPhoneOrCod(low)) {
+          return;
+        }
+
         if (skuKeywords.test(low) && !/(?:mã\s*đơn|mã\s*đh|mã\s*dh|mã\s*vận\s*đơn|mã\s*order|order\s*id)/i.test(low)) {
           return;
         }
 
-        // Bắt mã đơn theo tiền tố rõ ràng ("mã:", "mã đơn:", "mã đơn hàng là:", "mã đh:", "order:", "dh:")
+        // Bắt mã đơn theo tiền tố rõ ràng
         const explicitMatch = l.match(/(?:mã\s*đơn(?:\s*hàng)?(?:\s*là)?|mã\s*đh|mã\s*dh|mã\s*vận\s*đơn|mã\s*order|order\s*id|mã|dh)[:\s\-•]*([a-zA-Z0-9.\-_]{2,25})/i);
         if (explicitMatch && explicitMatch[1]) {
           const candidate = explicitMatch[1].trim();
-          if (!/^(hàng|gửi|tới|số|vận|đơn|cước|ship|thu|cod)$/i.test(candidate) && !skuKeywords.test(candidate)) {
+          if (!/^(hàng|gửi|tới|số|vận|đơn|cước|ship|thu|cod)$/i.test(candidate) && !skuKeywords.test(candidate) && !isPhoneOrCod(candidate)) {
             if (!orderCodes.includes(candidate)) orderCodes.push(candidate);
             return;
           }
         }
 
-        // Dòng khớp mã đơn tiêu chuẩn đứng độc lập (vd: "VN123456789", "JT987654321", "DH-2026-001", "Pct369", "K120.106", "a100.139")
+        // Dòng khớp mã đơn tiêu chuẩn đứng độc lập
         const standaloneMatch = l.match(/\b(VN[0-9]{8,12}|JT[0-9]{8,12}|DH[-_]?[0-9]{3,10}|ORD[-_]?[0-9]{3,10}|[A-Za-z][0-9]{1,4}[\.-][0-9]{1,6}|[A-Za-z]{1,5}[-_]?[0-9]{2,10})\b/i);
         if (standaloneMatch && standaloneMatch[1]) {
           const cand = standaloneMatch[1].trim();
-          if (!/\d+k$/i.test(cand) && !/^(ship|cod|vnd|vnđ|kg|g|size)$/i.test(cand) && !skuKeywords.test(cand)) {
+          if (!/\d+k$/i.test(cand) && !/^(ship|cod|vnd|vnđ|kg|g|size)$/i.test(cand) && !skuKeywords.test(cand) && !isPhoneOrCod(cand)) {
             if (!orderCodes.includes(cand)) orderCodes.push(cand);
           }
         }
@@ -330,8 +372,8 @@
       // 3. Trích xuất Mặt hàng / Sản phẩm (vd: "5kg đỗ quyên")
       const productItem = OrderProcessor.extractProductItem(lines);
 
-      // 4. Trích xuất Mã đơn hàng (Phân biệt với SKU Sản phẩm)
-      const orderCode = OrderProcessor.extractOrderCode(text, lines);
+      // 4. Trích xuất Mã đơn hàng (Phân biệt với SKU Sản phẩm, loại trừ SĐT và địa chỉ)
+      const orderCode = OrderProcessor.extractOrderCode(text, lines, phones);
 
       // 5. Trích xuất Tên người nhận (Dựa vào Họ VN & từ khóa lọc rác)
       let name = OrderProcessor.extractName(lines, phones, text);
