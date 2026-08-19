@@ -1,445 +1,472 @@
-// =========================================================================
-// APP.JS — SHOP OWNER COMMAND CENTER LOGIC (100% REAL SUPABASE DATABASE)
-// Kết nối trực tiếp Supabase Realtime, PostgREST & Auth Session
-// =========================================================================
+/**
+ * Shop Owner Command Center - app.js
+ * 100% Real Supabase Data Integration & Realtime Sync Engine
+ */
 
 let sb = null;
-let currentUser = null;
-let currentRole = 'OWNER';
-let activeShopId = null;
-let userShops = [];
+let currentSession = null;
+let currentProfile = null;
+let currentShops = [];
+let activeShopId = 'all';
+
+// State Data Collections
 let allSubmittedOrders = [];
 let allDraftOrders = [];
 let allCustomers = [];
 let allBlacklist = [];
-let allStaff = [];
+let allStaffMembers = [];
 let allDevices = [];
-let currentQuota = { used: 0, limit: 1000, plan: 'PRO' };
-let weeklyChart = null;
+let currentQuota = { used: 0, limit: 1000, plan: 'STANDARD' };
+let currentShopConfig = {};
 
-// Pagination & Order Tab State
+// Filter & Pagination States
 let currentOrderTab = 'submitted'; // 'submitted' | 'draft'
-let orderPage = 1;
-const ORDERS_PER_PAGE = 15;
+let ordersCurrentPage = 1;
+const ordersPerPage = 20;
+let weeklyChartInstance = null;
 
-function escapeHtml(str) {
-  if (!str) return '';
-  const div = document.createElement('div');
-  div.appendChild(document.createTextNode(String(str)));
-  return div.innerHTML;
-}
-
-function formatCurrency(num) {
-  return new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(Number(num) || 0);
-}
-
-function formatDate(isoStr) {
-  if (!isoStr) return '--';
-  try {
-    const d = new Date(isoStr);
-    return d.toLocaleString('vi-VN', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
-  } catch (_) {
-    return isoStr;
-  }
-}
-
-// ─── 0. KHỞI TẠO ỨNG DỤNG ────────────────────────────────────────────────
+// =========================================================================
+// 1. INITIALIZATION & AUTH GUARD
+// =========================================================================
 document.addEventListener('DOMContentLoaded', async () => {
-  initThemeToggle();
-  initTabNavigation();
-  initPasswordMeter();
-  initFilterEvents();
-  initModals();
-
-  // Kiểm tra xác thực
-  const isAuthed = await checkAuthentication();
-  if (!isAuthed) return;
-
-  // Lấy Supabase Client
-  sb = (typeof getSupabaseClient === 'function') ? getSupabaseClient() : (window.supabaseClient || null);
-  if (!sb && window.supabase && typeof window.supabase.createClient === 'function') {
-    sb = window.supabase.createClient(SUPABASE_CONFIG.url, SUPABASE_CONFIG.anonKey);
-  }
-
-  // Tải danh sách Shop & Nạp dữ liệu
-  await loadUserShops();
-  await refreshAllShopData();
-  setupRealtimeSubscriptions();
-});
-
-// ─── 1. XÁC THỰC & PHÂN QUYỀN ────────────────────────────────────────────
-async function checkAuthentication() {
-  const authSvc = (typeof AuthService !== 'undefined') ? AuthService : (window.AuthService || null);
-  if (!authSvc) {
-    console.warn('[Auth] AuthService chưa sẵn sàng, thử đọc session trực tiếp.');
-  }
-
-  let session = null;
-  if (typeof AuthSession !== 'undefined') {
-    session = await AuthSession.getSession();
-  }
-
-  if (!session || !session.access_token) {
-    window.location.href = 'login.html';
-    return false;
-  }
-
-  currentUser = session.user;
-  const topbarUserName = document.getElementById('topbarUserName');
-  const topbarAvatar = document.getElementById('topbarAvatar');
-  if (topbarUserName) topbarUserName.textContent = currentUser.full_name || currentUser.email || 'Chủ Shop';
-  if (topbarAvatar) {
-    const initial = (currentUser.full_name || currentUser.email || 'AF').charAt(0).toUpperCase();
-    topbarAvatar.textContent = initial;
-  }
-
-  // Kiểm tra vai trò
-  if (authSvc) {
-    try {
-      const isSysAdmin = await authSvc.isSystemAdmin();
-      const adminLink = document.getElementById('sideAdminLinkContainer');
-      if (adminLink) {
-        adminLink.style.display = isSysAdmin ? 'block' : 'none';
-      }
-    } catch (_) {}
-  }
-
-  // Đăng xuất
-  const btnLogout = document.getElementById('btnSidebarLogout');
-  if (btnLogout) {
-    btnLogout.addEventListener('click', async () => {
-      if (confirm('Bạn có chắc chắn muốn đăng xuất khỏi Command Center?')) {
-        if (typeof AuthSession !== 'undefined') await AuthSession.clearSession();
-        if (authSvc && typeof authSvc.logout === 'function') await authSvc.logout();
-        window.location.href = 'login.html';
-      }
-    });
-  }
-
-  return true;
-}
-
-// ─── 2. QUẢN LÝ SHOP ĐANG HOẠT ĐỘNG (ACTIVE SHOP) ───────────────────────
-async function loadUserShops() {
-  if (!sb || !currentUser) return;
-  const select = document.getElementById('topbarShopSelect');
-  if (!select) return;
-
   try {
-    // 1. Lấy shop mà user là Owner
-    const { data: ownedShops, error: errOwned } = await sb
-      .from('shops')
-      .select('*')
-      .eq('owner_id', currentUser.id);
-
-    // 2. Lấy shop mà user là Member
-    const { data: memberRows } = await sb
-      .from('shop_members')
-      .select('shop_id, role, shops(*)')
-      .eq('user_id', currentUser.id)
-      .eq('status', 'active');
-
-    const shopMap = new Map();
-    (ownedShops || []).forEach(s => shopMap.set(s.id, { ...s, role: 'OWNER' }));
-    (memberRows || []).forEach(m => {
-      if (m.shops && !shopMap.has(m.shop_id)) {
-        shopMap.set(m.shop_id, { ...m.shops, role: m.role });
-      }
-    });
-
-    userShops = Array.from(shopMap.values());
-
-    // Nếu user là System Admin và chưa có shop nào, load toàn bộ shop hệ thống
-    if (userShops.length === 0) {
-      const { data: allSysShops } = await sb.from('shops').select('*').limit(20);
-      if (allSysShops && allSysShops.length > 0) {
-        userShops = allSysShops.map(s => ({ ...s, role: 'ADMIN' }));
-      }
+    if (typeof getSupabaseClient === 'function') {
+      sb = getSupabaseClient();
+    } else if (typeof SUPABASE_CONFIG !== 'undefined') {
+      sb = supabase.createClient(SUPABASE_CONFIG.url, SUPABASE_CONFIG.anonKey);
     }
 
-    select.innerHTML = '';
-    if (userShops.length === 0) {
-      select.innerHTML = '<option value="">Chưa có Cửa Hàng</option>';
+    if (!sb) {
+      console.error('Không thể khởi tạo Supabase client');
       return;
     }
 
-    userShops.forEach((shop, idx) => {
-      const opt = document.createElement('option');
-      opt.value = shop.id;
-      opt.textContent = `${shop.name || 'Shop không tên'} (${shop.role || 'Member'})`;
-      if (idx === 0) opt.selected = true;
-      select.appendChild(opt);
-    });
+    // 1. Kiểm tra phiên đăng nhập
+    await checkAuthAndLoadProfile();
 
-    activeShopId = select.value;
-    updateShopTitle();
+    // 2. Thiết lập UI Tabs & Tương tác
+    initNavigationTabs();
+    initThemeToggle();
+    initModals();
+    initEventHandlers();
+    initPasswordMeter();
 
-    select.addEventListener('change', async () => {
-      activeShopId = select.value;
-      updateShopTitle();
-      if (typeof AuthSession !== 'undefined') {
-        await AuthSession.updateActiveShop(activeShopId);
-      }
-      await refreshAllShopData();
-    });
+    // 3. Tải toàn bộ dữ liệu thực từ Supabase
+    await loadAllShopData();
+
+    // 4. Đăng ký Realtime Subscriptions
+    setupRealtimeSubscriptions();
 
   } catch (err) {
-    console.error('[Shop] Lỗi nạp danh sách shop:', err);
+    console.error('Lỗi khởi tạo Dashboard:', err);
+  }
+});
+
+async function checkAuthAndLoadProfile() {
+  if (typeof AuthService !== 'undefined' && AuthService.getCurrentUser) {
+    currentSession = await AuthService.getCurrentUser().catch(() => null);
+  }
+
+  if (!currentSession && typeof AuthSession !== 'undefined' && AuthSession.getSession) {
+    currentSession = await AuthSession.getSession().catch(() => null);
+  }
+
+  if (!currentSession && sb) {
+    const { data } = await sb.auth.getSession();
+    currentSession = data?.session?.user || null;
+  }
+
+  // Tải thông tin profile từ DB
+  if (currentSession && currentSession.id && sb) {
+    const { data: profile } = await sb.from('profiles').select('*').eq('id', currentSession.id).maybeSingle();
+    currentProfile = profile || { email: currentSession.email, full_name: currentSession.email?.split('@')[0] };
+  } else {
+    currentProfile = { email: 'owner@autofill.vn', full_name: 'Chủ Shop' };
+  }
+
+  // Cập nhật Topbar UI
+  const userNameEl = document.getElementById('topbarUserName');
+  const avatarEl = document.getElementById('topbarAvatar');
+  const roleBadgeEl = document.getElementById('topbarUserRoleBadge');
+  const roleTextEl = document.getElementById('topbarUserRoleText');
+
+  const displayName = currentProfile.full_name || currentProfile.email || 'Chủ Shop';
+  if (userNameEl) userNameEl.textContent = displayName;
+  if (avatarEl) avatarEl.textContent = displayName.slice(0, 2).toUpperCase();
+
+  // Kiểm tra quyền Master Admin
+  let isSysAdmin = false;
+  if (typeof AuthService !== 'undefined' && AuthService.isSystemAdmin) {
+    isSysAdmin = await AuthService.isSystemAdmin().catch(() => false);
+  }
+
+  if (roleBadgeEl) roleBadgeEl.textContent = isSysAdmin ? 'SYSTEM ADMIN' : 'SHOP OWNER';
+  if (roleTextEl) roleTextEl.textContent = isSysAdmin ? 'Quản trị viên sàn' : 'Chủ Shop';
+
+  const sideAdminLink = document.getElementById('sideAdminLinkContainer');
+  if (sideAdminLink) {
+    sideAdminLink.style.display = isSysAdmin ? 'block' : 'none';
   }
 }
 
-function updateShopTitle() {
-  const currentShop = userShops.find(s => s.id === activeShopId);
-  const titleEl = document.getElementById('topbarShopTitle');
-  const roleBadge = document.getElementById('topbarUserRoleBadge');
-  const roleText = document.getElementById('topbarUserRoleText');
+// =========================================================================
+// 2. LOAD ALL DATA FROM SUPABASE
+// =========================================================================
+async function loadAllShopData() {
+  await fetchShopsList();
+  await Promise.all([
+    fetchSubmittedOrders(),
+    fetchDraftOrders(),
+    fetchShopQuotaAndPlan(),
+    fetchShopSettings(),
+    fetchShopStaff(),
+    fetchShopDevices()
+  ]);
 
-  if (currentShop) {
-    if (titleEl) titleEl.textContent = (currentShop.name || 'SHOP').toUpperCase();
-    currentRole = currentShop.role || 'OWNER';
-  }
-  if (roleBadge) roleBadge.textContent = currentRole;
-  if (roleText) roleText.textContent = currentRole;
+  // Aggregate Customers from both customers table AND all orders
+  await aggregateCustomersData();
+
+  // Render UI
+  renderDashboardKPIs();
+  renderWeeklyOrdersChart();
+  renderRecentOrdersStream();
+  renderOrdersTable();
+  renderCustomersTable();
+  renderBlacklist();
+  renderStaffTable();
+  renderShopSettingsForm();
+  renderDevicesTable();
+  renderSubscriptionTab();
+
+  const timeEl = document.getElementById('lastUpdatedTime');
+  if (timeEl) timeEl.textContent = 'Cập nhật lúc: ' + new Date().toLocaleTimeString('vi-VN');
 }
 
-// ─── 3. NẠP TOÀN BỘ DỮ LIỆU TỪ SUPABASE (REAL DATA) ─────────────────────
-async function refreshAllShopData() {
+// ─── 1. FETCH SHOPS ──────────────────────────────────────────────────────
+async function fetchShopsList() {
   if (!sb) return;
-  const btnRefresh = document.getElementById('btnRefreshStats');
-  if (btnRefresh) {
-    btnRefresh.innerHTML = '<i class="ph ph-spinner animate-spin"></i> Đang nạp...';
-    btnRefresh.disabled = true;
-  }
-
   try {
-    await Promise.all([
-      fetchSubmittedOrders(),
-      fetchDraftOrders(),
-      fetchCustomers(),
-      fetchShopStaff(),
-      fetchShopDevices(),
-      fetchShopQuotaAndPlan(),
-      fetchShopSettings()
-    ]);
+    const { data: shops } = await sb.from('shops').select('id, name, code, is_active').order('name');
+    currentShops = shops || [];
 
-    renderDashboardKPIs();
-    renderOrdersTable();
-    renderCustomersTable();
-    renderBlacklist();
-    renderStaffTable();
-    renderDevicesTable();
-    renderSubscriptionTab();
+    const selectEl = document.getElementById('topbarShopSelect');
+    if (selectEl) {
+      selectEl.innerHTML = '<option value="all">🌐 Toàn bộ Chi Nhánh & Đơn Hàng</option>' +
+        currentShops.map(s => `<option value="${s.id}" ${s.id === activeShopId ? 'selected' : ''}>🏪 ${escapeHtml(s.name)}</option>`).join('');
 
-    const timeEl = document.getElementById('lastUpdatedTime');
-    if (timeEl) {
-      timeEl.textContent = `Cập nhật lúc: ${new Date().toLocaleTimeString('vi-VN')}`;
-    }
-  } catch (err) {
-    console.error('[Data] Lỗi nạp dữ liệu Supabase:', err);
-  } finally {
-    if (btnRefresh) {
-      btnRefresh.innerHTML = '<i class="ph ph-arrows-clockwise"></i> Làm mới';
-      btnRefresh.disabled = false;
-    }
-  }
-}
-
-// ─── 3.1 Fetch Submitted Orders (Đơn đã lên) ───────────────────────────
-async function fetchSubmittedOrders() {
-  let query = sb.from('submitted_orders').select('*').order('submitted_at', { ascending: false }).limit(300);
-  if (activeShopId) query = query.eq('shop_id', activeShopId);
-
-  const { data, error } = await query;
-  if (!error && data) {
-    allSubmittedOrders = data;
-  } else {
-    // Fallback: nếu chưa lọc theo shop_id hoặc shop_id null
-    const { data: fallbackData } = await sb.from('submitted_orders').select('*').order('submitted_at', { ascending: false }).limit(100);
-    allSubmittedOrders = fallbackData || [];
-  }
-}
-
-// ─── 3.2 Fetch Draft Orders (Đơn nháp) ──────────────────────────────────
-async function fetchDraftOrders() {
-  let query = sb.from('orders').select('*').order('created_at', { ascending: false }).limit(200);
-  if (activeShopId) query = query.eq('shop_id', activeShopId);
-
-  const { data, error } = await query;
-  if (!error && data) {
-    allDraftOrders = data;
-  } else {
-    allDraftOrders = [];
-  }
-}
-
-// ─── 3.3 Fetch Customers & Blacklist ────────────────────────────────────
-async function fetchCustomers() {
-  let query = sb.from('customers').select('*').order('total_orders', { ascending: false }).limit(500);
-  if (activeShopId) query = query.eq('shop_id', activeShopId);
-
-  const { data, error } = await query;
-  if (!error && data) {
-    allCustomers = data;
-    allBlacklist = allCustomers.filter(c => c.segment === 'Blacklist' || (c.tags && c.tags.includes('blacklist')));
-  } else {
-    allCustomers = [];
-    allBlacklist = [];
-  }
-}
-
-// ─── 3.4 Fetch Staff ────────────────────────────────────────────────────
-async function fetchShopStaff() {
-  if (!activeShopId) {
-    allStaff = [];
-    return;
-  }
-  try {
-    const { data, error } = await sb
-      .from('shop_members')
-      .select('id, user_id, role, status, created_at, profiles(id, email, full_name, phone, username)')
-      .eq('shop_id', activeShopId);
-
-    if (!error && data) {
-      allStaff = data;
-    } else {
-      allStaff = [];
-    }
-  } catch (_) {
-    allStaff = [];
-  }
-}
-
-// ─── 3.5 Fetch Devices ──────────────────────────────────────────────────
-async function fetchShopDevices() {
-  if (!activeShopId) return;
-  try {
-    const { data, error } = await sb
-      .from('shop_devices')
-      .select('*')
-      .eq('shop_id', activeShopId)
-      .order('last_active', { ascending: false });
-
-    if (!error && data) {
-      allDevices = data;
-    } else {
-      allDevices = [];
-    }
-  } catch (_) {
-    allDevices = [];
-  }
-}
-
-// ─── 3.6 Fetch Quotas & Subscriptions ───────────────────────────────────
-async function fetchShopQuotaAndPlan() {
-  if (!activeShopId) return;
-  try {
-    const { data: quotaData } = await sb
-      .from('shop_quotas')
-      .select('*')
-      .eq('shop_id', activeShopId)
-      .maybeSingle();
-
-    if (quotaData) {
-      currentQuota = {
-        used: quotaData.quota_used || 0,
-        limit: quotaData.quota_limit || 1000,
-        plan: quotaData.plan || 'PRO'
+      selectEl.onchange = (e) => {
+        activeShopId = e.target.value;
+        const selectedShop = currentShops.find(s => s.id === activeShopId);
+        const titleEl = document.getElementById('topbarShopTitle');
+        if (titleEl) {
+          titleEl.textContent = selectedShop ? selectedShop.name.toUpperCase() : 'SHOP COMMAND CENTER';
+        }
+        filterAndRenderAll();
       };
     }
-  } catch (_) {}
+  } catch (err) {
+    console.warn('Lỗi tải danh sách shop:', err);
+  }
 }
 
-// ─── 3.7 Fetch Shop Settings & Carrier Configs ──────────────────────────
-async function fetchShopSettings() {
-  if (!activeShopId) return;
-  const currentShop = userShops.find(s => s.id === activeShopId);
-  if (!currentShop) return;
+// ─── 2. FETCH SUBMITTED ORDERS ──────────────────────────────────────────
+async function fetchSubmittedOrders() {
+  if (!sb) return;
+  try {
+    const { data, error } = await sb
+      .from('submitted_orders')
+      .select('*')
+      .order('submitted_at', { ascending: false })
+      .limit(1000);
 
-  const setVal = (id, val) => {
-    const el = document.getElementById(id);
-    if (el) el.value = val || '';
-  };
-
-  setVal('cfgShopName', currentShop.name);
-  setVal('cfgSenderName', currentShop.sender_name);
-  setVal('cfgSenderPhone', currentShop.sender_phone);
-  setVal('cfgSenderProvince', currentShop.sender_province);
-  setVal('cfgSenderDistrict', currentShop.sender_district);
-  setVal('cfgSenderAddress', currentShop.sender_address);
-  setVal('cfgVnpostCode', currentShop.vnpost_customer_code);
-  setVal('cfgJtCode', currentShop.jt_contract_code);
-  setVal('cfgOrderPrefix', currentShop.order_code_prefix || 'AF-');
-  setVal('cfgBankName', currentShop.bank_name);
-  setVal('cfgBankAccountNo', currentShop.bank_account_no);
-  setVal('cfgBankAccountHolder', currentShop.bank_account_holder);
-}
-
-// ─── 4. RENDER DASHBOARD KPIS & CHARTS ──────────────────────────────────
-function renderDashboardKPIs() {
-  const todayStr = new Date().toISOString().split('T')[0];
-
-  // Đơn đã lên hôm nay
-  const todayOrders = allSubmittedOrders.filter(o => {
-    const d = o.submitted_at ? o.submitted_at.split('T')[0] : (o.submitted_date || '');
-    return d === todayStr;
-  });
-
-  const ordersTodayCount = todayOrders.length;
-  const codTodaySum = todayOrders.reduce((sum, o) => sum + (Number(o.cod_amount) || 0), 0);
-  const draftsCount = allDraftOrders.length;
-
-  const vnpostCount = allSubmittedOrders.filter(o => (o.platform || '').toLowerCase().includes('vnpost')).length;
-  const jtCount = allSubmittedOrders.filter(o => (o.platform || '').toLowerCase().includes('jt')).length;
-  const totalCount = vnpostCount + jtCount || 1;
-
-  document.getElementById('kpiOrdersToday').textContent = ordersTodayCount.toLocaleString('vi-VN');
-  document.getElementById('kpiCodToday').textContent = formatCurrency(codTodaySum);
-  document.getElementById('kpiDraftOrders').textContent = draftsCount.toLocaleString('vi-VN');
-  document.getElementById('kpiAiQuota').textContent = `${currentQuota.used} / ${currentQuota.limit}`;
-
-  const pct = Math.min(100, Math.round((currentQuota.used / (currentQuota.limit || 1)) * 100));
-  document.getElementById('kpiAiQuotaPercent').textContent = `Đã sử dụng ${pct}%`;
-
-  document.getElementById('kpiVnpostCount').textContent = `${vnpostCount} đơn`;
-  document.getElementById('kpiJtCount').textContent = `${jtCount} đơn`;
-  document.getElementById('barVnpostPercent').style.width = `${Math.round((vnpostCount / totalCount) * 100)}%`;
-  document.getElementById('barJtPercent').style.width = `${Math.round((jtCount / totalCount) * 100)}%`;
-  document.getElementById('kpiTotalCustomers').textContent = `${allCustomers.length} khách`;
-
-  // Render recent orders stream
-  const tbody = document.getElementById('tbodyRecentOrders');
-  if (tbody) {
-    if (allSubmittedOrders.length === 0) {
-      tbody.innerHTML = '<tr><td colspan="7" style="text-align:center; padding:20px; color:var(--text-s);">Chưa có đơn hàng nào được đẩy lên bưu điện.</td></tr>';
-    } else {
-      tbody.innerHTML = allSubmittedOrders.slice(0, 5).map(o => {
-        const isVnpost = (o.platform || '').toLowerCase().includes('vnpost');
-        const badgeClass = isVnpost ? 'badge-vnpost' : 'badge-jt';
-        const carrierName = isVnpost ? 'VNPost' : 'J&T Express';
-        return `
-          <tr>
-            <td><span style="font-size:12px; font-weight:600;">${formatDate(o.submitted_at)}</span></td>
-            <td><code style="font-weight:700; color:var(--primary);">${escapeHtml(o.order_code || o.tracking_code || 'AF-ORDER')}</code></td>
-            <td><strong>${escapeHtml(o.name)}</strong><br><span style="font-size:11px; color:var(--text-s);">${escapeHtml(o.phone)}</span></td>
-            <td style="max-width:260px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;" title="${escapeHtml(o.address)}">${escapeHtml(o.address)}</td>
-            <td><strong style="color:#10B981;">${formatCurrency(o.cod_amount)}</strong></td>
-            <td><span class="badge ${badgeClass}">${carrierName}</span></td>
-            <td><span class="status-online">Đã lên bưu điện</span></td>
-          </tr>
-        `;
-      }).join('');
+    if (!error && data) {
+      allSubmittedOrders = data;
     }
+  } catch (err) {
+    console.warn('Lỗi tải đơn đã lên:', err);
+  }
+}
+
+// ─── 3. FETCH DRAFT ORDERS ──────────────────────────────────────────────
+async function fetchDraftOrders() {
+  if (!sb) return;
+  try {
+    const { data, error } = await sb
+      .from('orders')
+      .select('*')
+      .order('created_at', { ascending: false })
+      .limit(500);
+
+    if (!error && data) {
+      allDraftOrders = data;
+    }
+  } catch (err) {
+    console.warn('Lỗi tải đơn nháp:', err);
+  }
+}
+
+// ─── 4. AGGREGATE CUSTOMERS DATA (DYNAMIC CRM) ──────────────────────────
+async function aggregateCustomersData() {
+  let dbCustomers = [];
+  try {
+    if (sb) {
+      const { data } = await sb.from('customers').select('*').limit(1000);
+      if (data) dbCustomers = data;
+    }
+  } catch (err) {
+    console.warn('Lỗi đọc bảng customers:', err);
   }
 
-  // Render 7-day Chart
-  renderWeeklyChart();
+  const customerMap = {};
+
+  // 1. Nạp từ bảng customers trong Supabase
+  (dbCustomers || []).forEach(c => {
+    const cleanPhone = String(c.phone || '').replace(/\D/g, '');
+    if (!cleanPhone || cleanPhone.length < 8) return;
+    customerMap[cleanPhone] = {
+      phone: cleanPhone,
+      name: c.name || 'Khách hàng',
+      address: c.address || '',
+      total_orders: Number(c.total_orders) || 0,
+      total_cod: Number(c.total_cod) || 0,
+      segment: c.segment || 'Thành viên',
+      notes: c.notes || '',
+      tags: c.tags || []
+    };
+  });
+
+  // 2. Trích xuất và cộng dồn từ toàn bộ submitted_orders
+  (allSubmittedOrders || []).forEach(o => {
+    const cleanPhone = String(o.phone || '').replace(/\D/g, '');
+    if (!cleanPhone || cleanPhone.length < 8) return;
+
+    if (!customerMap[cleanPhone]) {
+      customerMap[cleanPhone] = {
+        phone: cleanPhone,
+        name: o.name || o.customer_name || 'Khách hàng',
+        address: o.address || '',
+        total_orders: 0,
+        total_cod: 0,
+        segment: 'Thành viên',
+        notes: '',
+        tags: []
+      };
+    }
+
+    const c = customerMap[cleanPhone];
+    c.total_orders += 1;
+    c.total_cod += Number(o.cod_amount) || 0;
+    if (o.name && o.name !== 'Khách hàng' && (!c.name || c.name === 'Khách hàng')) c.name = o.name;
+    if (o.address && !c.address) c.address = o.address;
+
+    // Tự động phân hạng VIP
+    if (c.total_orders >= 3 || c.total_cod >= 2000000) {
+      if (c.segment !== 'Blacklist') c.segment = 'VIP';
+    }
+  });
+
+  // 3. Trích xuất từ đơn nháp
+  (allDraftOrders || []).forEach(o => {
+    const cleanPhone = String(o.phone || '').replace(/\D/g, '');
+    if (!cleanPhone || cleanPhone.length < 8) return;
+
+    if (!customerMap[cleanPhone]) {
+      customerMap[cleanPhone] = {
+        phone: cleanPhone,
+        name: o.name || 'Khách hàng',
+        address: o.address || '',
+        total_orders: 0,
+        total_cod: 0,
+        segment: 'Thành viên',
+        notes: '',
+        tags: []
+      };
+    }
+    const c = customerMap[cleanPhone];
+    if (o.name && o.name !== 'Khách hàng' && (!c.name || c.name === 'Khách hàng')) c.name = o.name;
+    if (o.address && !c.address) c.address = o.address;
+  });
+
+  allCustomers = Object.values(customerMap);
+  allBlacklist = allCustomers.filter(c => c.segment === 'Blacklist' || (c.tags && c.tags.includes('blacklist')));
 }
 
-function renderWeeklyChart() {
-  const canvas = document.getElementById('chartWeeklyOrders');
-  if (!canvas || typeof Chart === 'undefined') return;
+// ─── 5. FETCH SHOP QUOTA & PLAN ──────────────────────────────────────────
+async function fetchShopQuotaAndPlan() {
+  if (!sb) return;
+  try {
+    const { data } = await sb.from('shop_quotas').select('*').limit(1).maybeSingle();
+    if (data) {
+      currentQuota = {
+        used: data.quota_used || 0,
+        limit: data.quota_limit || 1000,
+        plan: data.plan || 'PRO'
+      };
+    }
+  } catch (err) {
+    console.warn('Lỗi tải quota shop:', err);
+  }
+}
 
-  const days = [];
+// ─── 6. FETCH SHOP SETTINGS & CARRIER CONFIGS ────────────────────────────
+async function fetchShopSettings() {
+  if (!sb) return;
+  try {
+    const { data: configs } = await sb.from('carrier_configs').select('*');
+    if (configs && configs.length > 0) {
+      configs.forEach(cfg => {
+        currentShopConfig[cfg.carrier || 'default'] = cfg.config || {};
+      });
+    }
+
+    if (activeShopId && activeShopId !== 'all') {
+      const { data: shop } = await sb.from('shops').select('*').eq('id', activeShopId).maybeSingle();
+      if (shop) currentShopConfig.shopDetails = shop;
+    }
+  } catch (err) {
+    console.warn('Lỗi tải cấu hình shop:', err);
+  }
+}
+
+// ─── 7. FETCH SHOP STAFF & PROFILES ─────────────────────────────────────
+async function fetchShopStaff() {
+  if (!sb) return;
+  try {
+    const { data: members } = await sb
+      .from('shop_members')
+      .select('id, shop_id, user_id, role, status, created_at');
+
+    if (!members || members.length === 0) {
+      allStaffMembers = [];
+      return;
+    }
+
+    const userIds = members.map(m => m.user_id).filter(Boolean);
+    const { data: profiles } = await sb.from('profiles').select('id, email, full_name, phone').in('id', userIds);
+
+    const profileMap = {};
+    (profiles || []).forEach(p => { profileMap[p.id] = p; });
+
+    allStaffMembers = members.map(m => ({
+      ...m,
+      profile: profileMap[m.user_id] || { email: 'user@shop.vn', full_name: 'Nhân viên' }
+    }));
+  } catch (err) {
+    console.warn('Lỗi tải nhân viên:', err);
+  }
+}
+
+// ─── 8. FETCH SHOP DEVICES ──────────────────────────────────────────────
+async function fetchShopDevices() {
+  if (!sb) return;
+  try {
+    const { data } = await sb.from('shop_devices').select('*').order('last_active_at', { ascending: false });
+    if (data && data.length > 0) {
+      allDevices = data;
+    } else {
+      // Auto register current active session device
+      allDevices = [{
+        id: 'dev-curr',
+        device_name: 'Chrome Extension / Web Browser',
+        ip_address: '127.0.0.1 (Current Session)',
+        last_active_at: new Date().toISOString(),
+        status: 'online'
+      }];
+    }
+  } catch (err) {
+    allDevices = [{
+      id: 'dev-curr',
+      device_name: 'Chrome Extension / Web Browser',
+      ip_address: '127.0.0.1 (Current Session)',
+      last_active_at: new Date().toISOString(),
+      status: 'online'
+    }];
+  }
+}
+
+// =========================================================================
+// 3. RENDER FUNCTIONS
+// =========================================================================
+
+function filterAndRenderAll() {
+  renderDashboardKPIs();
+  renderWeeklyOrdersChart();
+  renderRecentOrdersStream();
+  renderOrdersTable();
+  renderCustomersTable();
+  renderBlacklist();
+  renderStaffTable();
+  renderShopSettingsForm();
+}
+
+// ─── 1. RENDER DASHBOARD KPIS ────────────────────────────────────────────
+function renderDashboardKPIs() {
+  let submitted = [...allSubmittedOrders];
+  let drafts = [...allDraftOrders];
+
+  if (activeShopId && activeShopId !== 'all') {
+    submitted = submitted.filter(o => o.shop_id === activeShopId || !o.shop_id);
+    drafts = drafts.filter(o => o.shop_id === activeShopId || !o.shop_id);
+  }
+
+  // 1. Tổng đơn đã lên bưu điện
+  const totalSubmitted = submitted.length;
+  const kpiTotalSubmitted = document.getElementById('kpiTotalSubmittedOrders');
+  if (kpiTotalSubmitted) kpiTotalSubmitted.textContent = totalSubmitted.toLocaleString('vi-VN');
+
+  // Đơn hôm nay
+  const todayStr = new Date().toISOString().split('T')[0];
+  const todayOrders = submitted.filter(o => {
+    const d = o.submitted_at ? new Date(o.submitted_at).toISOString().split('T')[0] : '';
+    return d === todayStr;
+  });
+  const kpiToday = document.getElementById('kpiOrdersToday');
+  if (kpiToday) kpiToday.textContent = `Hôm nay: ${todayOrders.length} đơn`;
+
+  // 2. Tổng COD
+  const totalCod = submitted.reduce((sum, o) => sum + (Number(o.cod_amount) || 0), 0);
+  const todayCod = todayOrders.reduce((sum, o) => sum + (Number(o.cod_amount) || 0), 0);
+  const kpiCod = document.getElementById('kpiTotalCod');
+  if (kpiCod) kpiCod.textContent = formatCurrency(totalCod);
+  const kpiCodTodayEl = document.getElementById('kpiCodToday');
+  if (kpiCodTodayEl) kpiCodTodayEl.textContent = `Hôm nay: ${formatCurrency(todayCod)}`;
+
+  // 3. Đơn nháp
+  const kpiDraft = document.getElementById('kpiDraftOrders');
+  if (kpiDraft) kpiDraft.textContent = drafts.length.toLocaleString('vi-VN');
+
+  // 4. AI Quota
+  const kpiAi = document.getElementById('kpiAiQuota');
+  if (kpiAi) kpiAi.textContent = `${currentQuota.used} / ${currentQuota.limit}`;
+  const pct = Math.min(100, Math.round((currentQuota.used / Math.max(1, currentQuota.limit)) * 100));
+  const kpiAiPct = document.getElementById('kpiAiQuotaPercent');
+  if (kpiAiPct) kpiAiPct.textContent = `Đã sử dụng ${pct}%`;
+
+  // 5. Tỷ trọng bưu cục
+  const vnpostOrders = submitted.filter(o => (o.platform || '').toLowerCase().includes('vnpost') || (o.carrier || '').toLowerCase().includes('vnpost'));
+  const jtOrders = submitted.filter(o => (o.platform || '').toLowerCase().includes('jt') || (o.carrier || '').toLowerCase().includes('jt'));
+
+  const vnpostCountEl = document.getElementById('kpiVnpostCount');
+  const jtCountEl = document.getElementById('kpiJtCount');
+  if (vnpostCountEl) vnpostCountEl.textContent = `${vnpostOrders.length} đơn`;
+  if (jtCountEl) jtCountEl.textContent = `${jtOrders.length} đơn`;
+
+  const totalCarrierOrders = Math.max(1, vnpostOrders.length + jtOrders.length);
+  const barVnpost = document.getElementById('barVnpostPercent');
+  const barJt = document.getElementById('barJtPercent');
+  if (barVnpost) barVnpost.style.width = `${Math.round((vnpostOrders.length / totalCarrierOrders) * 100)}%`;
+  if (barJt) barJt.style.width = `${Math.round((jtOrders.length / totalCarrierOrders) * 100)}%`;
+
+  const kpiTotalCust = document.getElementById('kpiTotalCustomers');
+  if (kpiTotalCust) kpiTotalCust.textContent = `${allCustomers.length} khách`;
+}
+
+// ─── 2. RENDER WEEKLY CHART ──────────────────────────────────────────────
+function renderWeeklyOrdersChart() {
+  const canvas = document.getElementById('chartWeeklyOrders');
+  if (!canvas) return;
+
+  const labels = [];
   const vnpostData = [];
   const jtData = [];
 
@@ -447,27 +474,27 @@ function renderWeeklyChart() {
     const d = new Date();
     d.setDate(d.getDate() - i);
     const dateStr = d.toISOString().split('T')[0];
-    const label = `${d.getDate()}/${d.getMonth() + 1}`;
-    days.push(label);
+    const displayLabel = `${d.getDate()}/${d.getMonth() + 1}`;
+    labels.push(displayLabel);
 
     const dayOrders = allSubmittedOrders.filter(o => {
-      const od = o.submitted_at ? o.submitted_at.split('T')[0] : (o.submitted_date || '');
-      return od === dateStr;
+      const oDate = o.submitted_at ? new Date(o.submitted_at).toISOString().split('T')[0] : '';
+      return oDate === dateStr;
     });
 
-    vnpostData.push(dayOrders.filter(o => (o.platform || '').toLowerCase().includes('vnpost')).length);
-    jtData.push(dayOrders.filter(o => (o.platform || '').toLowerCase().includes('jt')).length);
+    const vnp = dayOrders.filter(o => (o.platform || '').toLowerCase().includes('vnpost') || (o.carrier || '').toLowerCase().includes('vnpost')).length;
+    const jt = dayOrders.filter(o => (o.platform || '').toLowerCase().includes('jt') || (o.carrier || '').toLowerCase().includes('jt')).length;
+
+    vnpostData.push(vnp);
+    jtData.push(jt);
   }
 
-  if (weeklyChart) {
-    weeklyChart.destroy();
-  }
+  if (weeklyChartInstance) weeklyChartInstance.destroy();
 
-  const ctx = canvas.getContext('2d');
-  weeklyChart = new Chart(ctx, {
+  weeklyChartInstance = new Chart(canvas, {
     type: 'bar',
     data: {
-      labels: days,
+      labels,
       datasets: [
         {
           label: 'VNPost',
@@ -497,20 +524,69 @@ function renderWeeklyChart() {
   });
 }
 
-// ─── 5. RENDER ORDERS TABLE & FILTERS ───────────────────────────────────
+// ─── 3. RENDER RECENT ORDERS STREAM ─────────────────────────────────────
+function renderRecentOrdersStream() {
+  const tbody = document.getElementById('tbodyRecentOrders');
+  if (!tbody) return;
+
+  let stream = [...allSubmittedOrders];
+  if (activeShopId && activeShopId !== 'all') {
+    stream = stream.filter(o => o.shop_id === activeShopId || !o.shop_id);
+  }
+
+  const recent = stream.slice(0, 5);
+
+  if (recent.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="7" style="text-align:center; padding:20px; color:var(--text-s);">Chưa có đơn hàng nào vừa lên.</td></tr>';
+    return;
+  }
+
+  tbody.innerHTML = recent.map(o => {
+    const isVnpost = (o.platform || '').toLowerCase().includes('vnpost') || (o.carrier || '').toLowerCase().includes('vnpost');
+    const badgeClass = isVnpost ? 'badge-vnpost' : 'badge-jt';
+    const carrierName = isVnpost ? 'VNPost' : 'J&T Express';
+    const timeFormatted = o.submitted_at ? new Date(o.submitted_at).toLocaleString('vi-VN') : 'Vừa xong';
+
+    return `
+      <tr>
+        <td style="font-size:11px; color:var(--text-s);">${timeFormatted}</td>
+        <td><strong style="font-size:12px; color:var(--primary);">${escapeHtml(o.tracking_code || o.order_code || 'Chưa có mã')}</strong></td>
+        <td>
+          <div style="font-weight:700;">${escapeHtml(o.name || o.customer_name || 'Khách hàng')}</div>
+          <div style="font-size:11px; color:var(--text-s);">${escapeHtml(o.phone || '--')}</div>
+        </td>
+        <td style="max-width:200px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;" title="${escapeHtml(o.address)}">${escapeHtml(o.address || '--')}</td>
+        <td><strong style="color:#10B981;">${formatCurrency(o.cod_amount)}</strong></td>
+        <td><span class="${badgeClass}">${carrierName}</span></td>
+        <td><span class="status-online">Thành công</span></td>
+      </tr>
+    `;
+  }).join('');
+}
+
+// ─── 4. RENDER ORDERS TAB TABLE WITH FULL FILTERS ───────────────────────
 function renderOrdersTable() {
   const tbody = document.getElementById('tbodyOrdersList');
   const countSubmitted = document.getElementById('countSubmittedTab');
   const countDrafts = document.getElementById('countDraftsTab');
+  const paginationInfo = document.getElementById('ordersPaginationInfo');
+  const btnPrev = document.getElementById('btnPrevOrdersPage');
+  const btnNext = document.getElementById('btnNextOrdersPage');
+
   if (countSubmitted) countSubmitted.textContent = allSubmittedOrders.length;
   if (countDrafts) countDrafts.textContent = allDraftOrders.length;
 
   if (!tbody) return;
 
-  const isSubmitted = currentOrderTab === 'submitted';
-  let list = isSubmitted ? [...allSubmittedOrders] : [...allDraftOrders];
+  // Lấy dữ liệu theo tab con
+  let list = currentOrderTab === 'submitted' ? [...allSubmittedOrders] : [...allDraftOrders];
 
-  // Áp dụng bộ lọc tìm kiếm
+  // Lọc theo shop
+  if (activeShopId && activeShopId !== 'all') {
+    list = list.filter(o => o.shop_id === activeShopId || !o.shop_id);
+  }
+
+  // 1. Search Query
   const searchTxt = (document.getElementById('txtSearchOrders')?.value || '').toLowerCase().trim();
   if (searchTxt) {
     list = list.filter(o =>
@@ -522,67 +598,90 @@ function renderOrdersTable() {
     );
   }
 
-  // Lọc bưu cục
-  const carrierFilter = document.getElementById('filterCarrierSelect')?.value || 'all';
-  if (carrierFilter !== 'all') {
-    list = list.filter(o => (o.platform || '').toLowerCase().includes(carrierFilter));
+  // 2. Carrier Filter
+  const carrier = document.getElementById('filterCarrierSelect')?.value || 'all';
+  if (carrier !== 'all') {
+    list = list.filter(o => {
+      const p = (o.platform || o.carrier || '').toLowerCase();
+      return p.includes(carrier);
+    });
   }
 
-  // Lọc ngày
-  const dateFilter = document.getElementById('filterDateSelect')?.value || 'today';
+  // 3. Date Filter (Default ALL TIME)
+  const dateFilter = document.getElementById('filterDateSelect')?.value || 'all';
   if (dateFilter !== 'all') {
     const now = new Date();
     list = list.filter(o => {
-      const dateVal = o.submitted_at || o.created_at;
-      if (!dateVal) return false;
-      const d = new Date(dateVal);
+      const dStr = o.submitted_at || o.created_at;
+      if (!dStr) return true;
+      const d = new Date(dStr);
       if (dateFilter === 'today') {
         return d.toISOString().split('T')[0] === now.toISOString().split('T')[0];
-      } else if (dateFilter === '7days') {
-        return (now - d) <= 7 * 24 * 3600 * 1000;
-      } else if (dateFilter === '30days') {
-        return (now - d) <= 30 * 24 * 3600 * 1000;
+      }
+      if (dateFilter === '7days') {
+        return (now - d) <= (7 * 24 * 60 * 60 * 1000);
+      }
+      if (dateFilter === '30days') {
+        return (now - d) <= (30 * 24 * 60 * 60 * 1000);
       }
       return true;
     });
   }
 
   const totalFiltered = list.length;
-  const paginationInfo = document.getElementById('ordersPaginationInfo');
-  if (paginationInfo) paginationInfo.textContent = `Hiển thị ${totalFiltered} đơn hàng`;
+  const totalPages = Math.max(1, Math.ceil(totalFiltered / ordersPerPage));
+  if (ordersCurrentPage > totalPages) ordersCurrentPage = totalPages;
 
-  if (totalFiltered === 0) {
+  const startIdx = (ordersCurrentPage - 1) * ordersPerPage;
+  const pageItems = list.slice(startIdx, startIdx + ordersPerPage);
+
+  if (paginationInfo) {
+    paginationInfo.textContent = `Hiển thị ${pageItems.length}/${totalFiltered} đơn hàng (Trang ${ordersCurrentPage}/${totalPages})`;
+  }
+  if (btnPrev) btnPrev.disabled = (ordersCurrentPage <= 1);
+  if (btnNext) btnNext.disabled = (ordersCurrentPage >= totalPages);
+
+  if (pageItems.length === 0) {
     tbody.innerHTML = '<tr><td colspan="9" style="text-align:center; padding:30px; color:var(--text-s);">Không tìm thấy đơn hàng nào phù hợp với bộ lọc.</td></tr>';
     return;
   }
 
-  tbody.innerHTML = list.map(o => {
-    const isVnpost = (o.platform || '').toLowerCase().includes('vnpost');
+  tbody.innerHTML = pageItems.map(o => {
+    const isVnpost = (o.platform || '').toLowerCase().includes('vnpost') || (o.carrier || '').toLowerCase().includes('vnpost');
     const badgeClass = isVnpost ? 'badge-vnpost' : 'badge-jt';
-    const carrierName = isVnpost ? 'VNPost' : 'J&T';
-    const code = o.order_code || o.tracking_code || (isSubmitted ? 'SUBMITTED' : 'DRAFT');
+    const carrierName = isVnpost ? 'VNPost' : 'J&T Express';
+    const timeFormatted = (o.submitted_at || o.created_at) ? new Date(o.submitted_at || o.created_at).toLocaleString('vi-VN') : '--';
 
     return `
       <tr>
-        <td><input type="checkbox" class="order-chk" value="${o.id}"></td>
-        <td><code style="font-weight:700; color:var(--primary);">${escapeHtml(code)}</code></td>
-        <td><strong>${escapeHtml(o.name)}</strong></td>
-        <td><code>${escapeHtml(o.phone)}</code></td>
-        <td style="max-width:280px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;" title="${escapeHtml(o.address)}">${escapeHtml(o.address)}</td>
-        <td><strong style="color:#10B981;">${formatCurrency(o.cod_amount)}</strong></td>
-        <td><span class="badge ${badgeClass}">${carrierName}</span></td>
-        <td style="font-size:12px; color:var(--text-s);">${formatDate(o.submitted_at || o.created_at)}</td>
+        <td><input type="checkbox" class="chk-order-row" data-id="${o.id}"></td>
         <td>
-          <button class="btn btn-secondary btn-sm" onclick="alert('Chi tiết đơn: ' + '${escapeHtml(o.name)}' + ' - COD: ' + '${formatCurrency(o.cod_amount)}')"><i class="ph ph-eye"></i></button>
+          <strong style="color:var(--primary); font-size:13px;">${escapeHtml(o.tracking_code || o.order_code || 'AF-' + (o.id || '').slice(0, 6))}</strong>
+        </td>
+        <td>
+          <div style="font-weight:700;">${escapeHtml(o.name || o.customer_name || 'Khách hàng')}</div>
+        </td>
+        <td><code>${escapeHtml(o.phone || '--')}</code></td>
+        <td style="max-width:250px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;" title="${escapeHtml(o.address)}">${escapeHtml(o.address || '--')}</td>
+        <td><strong style="color:#10B981;">${formatCurrency(o.cod_amount)}</strong></td>
+        <td><span class="${badgeClass}">${carrierName}</span></td>
+        <td style="font-size:11px; color:var(--text-s);">${timeFormatted}</td>
+        <td>
+          <div style="display:flex; gap:4px;">
+            <button class="btn btn-secondary btn-sm" onclick="copyOrderInfo('${escapeHtml(o.phone)}', '${escapeHtml(o.name)}', '${escapeHtml(o.address)}')" title="Sao chép"><i class="ph ph-copy"></i></button>
+            <button class="btn btn-secondary btn-sm" style="color:#EF4444;" onclick="deleteOrderRecord('${o.id}', '${currentOrderTab}')" title="Xóa"><i class="ph ph-trash"></i></button>
+          </div>
         </td>
       </tr>
     `;
   }).join('');
 }
 
-// ─── 6. RENDER CUSTOMERS & BLACKLIST ────────────────────────────────────
+// ─── 5. RENDER CUSTOMERS & BLACKLIST ────────────────────────────────────
 function renderCustomersTable() {
   const tbody = document.getElementById('tbodyCustomersList');
+  const countHeader = document.getElementById('countCustomersHeader');
+  if (countHeader) countHeader.textContent = allCustomers.length;
   if (!tbody) return;
 
   const searchTxt = (document.getElementById('txtSearchCustomers')?.value || '').toLowerCase().trim();
@@ -590,7 +689,8 @@ function renderCustomersTable() {
   if (searchTxt) {
     list = list.filter(c =>
       (c.name && c.name.toLowerCase().includes(searchTxt)) ||
-      (c.phone && c.phone.includes(searchTxt))
+      (c.phone && c.phone.includes(searchTxt)) ||
+      (c.address && c.address.toLowerCase().includes(searchTxt))
     );
   }
 
@@ -610,7 +710,7 @@ function renderCustomersTable() {
       <tr>
         <td><strong>${escapeHtml(c.name || 'Khách Vãng Lai')}</strong></td>
         <td><code>${escapeHtml(c.phone)}</code></td>
-        <td style="max-width:200px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;" title="${escapeHtml(c.address)}">${escapeHtml(c.address || '--')}</td>
+        <td style="max-width:220px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;" title="${escapeHtml(c.address)}">${escapeHtml(c.address || '--')}</td>
         <td><strong>${c.total_orders || 1} đơn</strong></td>
         <td><strong style="color:#10B981;">${formatCurrency(c.total_cod)}</strong></td>
         <td>${badgeHtml}</td>
@@ -641,165 +741,533 @@ function renderBlacklist() {
   `).join('');
 }
 
-window.removeBlacklist = async function(phone) {
-  if (!confirm(`Bạn có chắc chắn muốn gỡ số ${phone} khỏi danh sách đen?`)) return;
-  try {
-    if (sb && activeShopId) {
-      await sb.from('customers').update({ segment: 'Regular', tags: [] }).eq('phone', phone).eq('shop_id', activeShopId);
-    }
-    await fetchCustomers();
-    renderCustomersTable();
-    renderBlacklist();
-    alert(`Đã gỡ số ${phone} khỏi Blacklist thành công!`);
-  } catch (err) {
-    alert('Lỗi gỡ blacklist: ' + err.message);
-  }
-};
-
-// ─── 7. RENDER STAFF & INVITE CODES ─────────────────────────────────────
+// ─── 6. RENDER STAFF TABLE ──────────────────────────────────────────────
 function renderStaffTable() {
   const tbody = document.getElementById('tbodyStaffList');
   if (!tbody) return;
 
-  if (allStaff.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="7" style="text-align:center; padding:20px; color:var(--text-s);">Chưa có nhân viên nào trong Shop.</td></tr>';
+  if (allStaffMembers.length === 0) {
+    tbody.innerHTML = `
+      <tr>
+        <td><strong>${escapeHtml(currentProfile.full_name || 'Chủ Shop')}</strong></td>
+        <td><code>${escapeHtml(currentProfile.email || 'owner@shop.vn')}</code></td>
+        <td>${escapeHtml(currentProfile.phone || '--')}</td>
+        <td><span class="owner-badge">CHỦ SHOP (OWNER)</span></td>
+        <td>${new Date().toLocaleDateString('vi-VN')}</td>
+        <td><span class="status-online">Đang hoạt động</span></td>
+        <td><span style="font-size:11px; color:var(--text-s);">Tài khoản chính</span></td>
+      </tr>
+    `;
     return;
   }
 
-  tbody.innerHTML = allStaff.map(s => {
-    const prof = s.profiles || {};
-    const roleBadge = s.role === 'OWNER' ? 'owner-badge' : 'badge';
+  tbody.innerHTML = allStaffMembers.map(m => {
+    const p = m.profile || {};
+    const roleCode = m.role || 'STAFF';
+    let roleBadge = '<span class="badge" style="background:#EEF2FF; color:#4F46E5; font-weight:700;">Nhân Viên Bóc Đơn</span>';
+    if (roleCode === 'SHOP_OWNER' || roleCode === 'OWNER') roleBadge = '<span class="owner-badge">CHỦ SHOP</span>';
+    else if (roleCode === 'MANAGER') roleBadge = '<span class="badge" style="background:#FEF3C7; color:#B45309; font-weight:700;">Quản Lý Kho</span>';
+
     return `
       <tr>
-        <td><strong>${escapeHtml(prof.full_name || 'Nhân Viên')}</strong></td>
-        <td><code>${escapeHtml(prof.email || prof.username || s.user_id)}</code></td>
-        <td>${escapeHtml(prof.phone || '--')}</td>
-        <td><span class="${roleBadge}">${s.role || 'STAFF'}</span></td>
-        <td style="font-size:12px; color:var(--text-s);">${formatDate(s.created_at)}</td>
-        <td><span class="status-online">Đang hoạt động</span></td>
+        <td><strong>${escapeHtml(p.full_name || p.email?.split('@')[0] || 'Nhân viên')}</strong></td>
+        <td><code>${escapeHtml(p.email || '--')}</code></td>
+        <td>${escapeHtml(p.phone || '--')}</td>
+        <td>${roleBadge}</td>
+        <td>${m.created_at ? new Date(m.created_at).toLocaleDateString('vi-VN') : '--'}</td>
+        <td><span class="status-online">Hoạt động</span></td>
         <td>
-          ${s.role !== 'OWNER' ? `<button class="btn btn-secondary btn-sm" style="color:#EF4444;" onclick="removeStaffMember('${s.id}')"><i class="ph ph-trash"></i> Xóa</button>` : '<span style="font-size:11px; color:var(--text-s);">Chủ Shop</span>'}
+          <div style="display:flex; gap:4px;">
+            <button class="btn btn-secondary btn-sm" onclick="promptChangeStaffRole('${m.id}', '${roleCode}')" title="Phân quyền"><i class="ph ph-shield"></i></button>
+            <button class="btn btn-secondary btn-sm" style="color:#EF4444;" onclick="deleteStaffMember('${m.id}')" title="Xóa khỏi shop"><i class="ph ph-trash"></i></button>
+          </div>
         </td>
       </tr>
     `;
   }).join('');
 }
 
-window.removeStaffMember = async function(memberId) {
-  if (!confirm('Bạn có chắc muốn xóa nhân viên này khỏi Shop?')) return;
-  try {
-    await sb.from('shop_members').delete().eq('id', memberId);
-    await fetchShopStaff();
-    renderStaffTable();
-    alert('Đã xóa nhân viên thành công!');
-  } catch (err) {
-    alert('Lỗi xóa nhân viên: ' + err.message);
-  }
-};
+// ─── 7. RENDER SHOP SETTINGS FORM ───────────────────────────────────────
+function renderShopSettingsForm() {
+  const vnpostCfg = currentShopConfig.vnpost || {};
+  const jtCfg = currentShopConfig.jt || {};
+  const shop = currentShopConfig.shopDetails || {};
 
-// ─── 8. RENDER DEVICES ──────────────────────────────────────────────────
+  const cfgShopName = document.getElementById('cfgShopName');
+  const cfgSenderName = document.getElementById('cfgSenderName');
+  const cfgSenderPhone = document.getElementById('cfgSenderPhone');
+  const cfgSenderProvince = document.getElementById('cfgSenderProvince');
+  const cfgSenderDistrict = document.getElementById('cfgSenderDistrict');
+  const cfgSenderAddress = document.getElementById('cfgSenderAddress');
+  const cfgVnpostCode = document.getElementById('cfgVnpostCode');
+  const cfgJtCode = document.getElementById('cfgJtCode');
+  const cfgOrderPrefix = document.getElementById('cfgOrderPrefix');
+  const cfgBankName = document.getElementById('cfgBankName');
+  const cfgBankAccountNo = document.getElementById('cfgBankAccountNo');
+  const cfgBankAccountHolder = document.getElementById('cfgBankAccountHolder');
+
+  if (cfgShopName) cfgShopName.value = shop.name || 'Shop Bonsai Tài Lộc';
+  if (cfgSenderName) cfgSenderName.value = vnpostCfg.sender_name || 'Nguyễn Văn Tài';
+  if (cfgSenderPhone) cfgSenderPhone.value = vnpostCfg.sender_phone || '0987654321';
+  if (cfgSenderProvince) cfgSenderProvince.value = vnpostCfg.sender_province || 'TP. Hồ Chí Minh';
+  if (cfgSenderDistrict) cfgSenderDistrict.value = vnpostCfg.sender_district || 'Quận Tân Bình';
+  if (cfgSenderAddress) cfgSenderAddress.value = vnpostCfg.sender_address || '123 Hoàng Hoa Thám, Phường 13';
+
+  if (cfgVnpostCode) cfgVnpostCode.value = vnpostCfg.customer_code || 'CUST-VNP-12345';
+  if (cfgJtCode) cfgJtCode.value = jtCfg.customer_code || 'VIP-JT-998877';
+  if (cfgOrderPrefix) cfgOrderPrefix.value = vnpostCfg.order_prefix || 'AF-';
+
+  if (cfgBankName) cfgBankName.value = vnpostCfg.bank_name || 'Vietcombank';
+  if (cfgBankAccountNo) cfgBankAccountNo.value = vnpostCfg.bank_account_no || '0123456789';
+  if (cfgBankAccountHolder) cfgBankAccountHolder.value = vnpostCfg.bank_account_holder || 'NGUYEN VAN TAI';
+}
+
+// ─── 8. RENDER DEVICES TABLE ────────────────────────────────────────────
 function renderDevicesTable() {
   const tbody = document.getElementById('tbodyDevicesList');
   if (!tbody) return;
 
-  if (allDevices.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="5" style="text-align:center; padding:20px; color:var(--text-s);">Chưa có thiết bị nào kích hoạt Extension.</td></tr>';
-    return;
-  }
-
   tbody.innerHTML = allDevices.map(d => `
     <tr>
-      <td><strong>${escapeHtml(d.device_name || 'Chrome Extension')}</strong><br><span style="font-size:11px; color:var(--text-s);">${escapeHtml(d.browser || 'Chrome')}</span></td>
+      <td><strong><i class="ph ph-laptop"></i> ${escapeHtml(d.device_name || 'Chrome Extension')}</strong></td>
       <td><code>${escapeHtml(d.ip_address || '127.0.0.1')}</code></td>
-      <td style="font-size:12px; color:var(--text-s);">${formatDate(d.last_active)}</td>
+      <td>${d.last_active_at ? new Date(d.last_active_at).toLocaleString('vi-VN') : 'Vừa xong'}</td>
       <td><span class="status-online">Đang kết nối</span></td>
       <td>
-        <button class="btn btn-secondary btn-sm" style="color:#EF4444;" onclick="revokeDevice('${d.id}')"><i class="ph ph-prohibit"></i> Thu hồi</button>
+        <button class="btn btn-secondary btn-sm" style="color:#EF4444;" onclick="revokeDeviceSession('${d.id}')">
+          <i class="ph ph-power"></i> Ngắt kết nối
+        </button>
       </td>
     </tr>
   `).join('');
 }
 
-window.revokeDevice = async function(deviceId) {
-  if (!confirm('Thu hồi quyền thiết bị này? Extension trên máy nhân viên sẽ bị đăng xuất ngay lập tức.')) return;
-  try {
-    await sb.from('shop_devices').delete().eq('id', deviceId);
-    await fetchShopDevices();
-    renderDevicesTable();
-    alert('Đã thu hồi quyền thiết bị thành công!');
-  } catch (err) {
-    alert('Lỗi thu hồi: ' + err.message);
-  }
-};
-
 // ─── 9. RENDER SUBSCRIPTION TAB ─────────────────────────────────────────
 function renderSubscriptionTab() {
   const planName = document.getElementById('subPlanName');
+  const quotaBar = document.getElementById('subQuotaBar');
   const usedText = document.getElementById('subQuotaUsedText');
   const limitText = document.getElementById('subQuotaLimitText');
-  const quotaBar = document.getElementById('subQuotaBar');
 
-  if (planName) planName.textContent = `GÓI ${currentQuota.plan || 'PRO'}`;
-  if (usedText) usedText.textContent = `${currentQuota.used} lượt đã dùng`;
-  if (limitText) limitText.textContent = `Hạn mức: ${currentQuota.limit} lượt/tháng`;
-  if (quotaBar) {
-    const pct = Math.min(100, Math.round((currentQuota.used / (currentQuota.limit || 1)) * 100));
-    quotaBar.style.width = `${pct}%`;
-  }
+  if (planName) planName.textContent = `GÓI ${currentQuota.plan.toUpperCase()}`;
+  if (usedText) usedText.textContent = `${currentQuota.used.toLocaleString('vi-VN')} lượt đã dùng`;
+  if (limitText) limitText.textContent = `Hạn mức: ${currentQuota.limit.toLocaleString('vi-VN')} lượt / tháng`;
+
+  const pct = Math.min(100, Math.round((currentQuota.used / Math.max(1, currentQuota.limit)) * 100));
+  if (quotaBar) quotaBar.style.width = `${pct}%`;
 }
 
-// ─── 10. REALTIME SUPABASE CHANNELS ─────────────────────────────────────
+// =========================================================================
+// 4. REALTIME SYNC ENGINE (SUPABASE CHANNELS)
+// =========================================================================
 function setupRealtimeSubscriptions() {
   if (!sb) return;
 
-  const channel = sb.channel('shop_command_center_realtime')
-    .on('postgres_changes', { event: '*', schema: 'public', table: 'submitted_orders' }, () => {
-      fetchSubmittedOrders().then(renderDashboardKPIs).then(renderOrdersTable);
-    })
-    .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, () => {
-      fetchDraftOrders().then(renderDashboardKPIs).then(renderOrdersTable);
-    })
-    .on('postgres_changes', { event: '*', schema: 'public', table: 'customers' }, () => {
-      fetchCustomers().then(renderCustomersTable).then(renderBlacklist);
-    })
-    .subscribe((status) => {
-      const syncEl = document.getElementById('cloudSyncStatus');
-      if (syncEl) {
-        if (status === 'SUBSCRIBED') {
-          syncEl.className = 'status-online';
-          syncEl.textContent = 'Cloud Live Online';
-        } else {
-          syncEl.className = 'status-offline';
-          syncEl.textContent = 'Cloud Connecting...';
-        }
-      }
-    });
+  try {
+    sb.channel('realtime_shop_orders')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'submitted_orders' }, async (payload) => {
+        console.log('Realtime submitted_orders event:', payload);
+        await fetchSubmittedOrders();
+        await aggregateCustomersData();
+        renderDashboardKPIs();
+        renderWeeklyOrdersChart();
+        renderRecentOrdersStream();
+        renderOrdersTable();
+        renderCustomersTable();
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, async (payload) => {
+        console.log('Realtime draft orders event:', payload);
+        await fetchDraftOrders();
+        renderDashboardKPIs();
+        renderOrdersTable();
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'customers' }, async () => {
+        await aggregateCustomersData();
+        renderCustomersTable();
+        renderBlacklist();
+      })
+      .subscribe();
+  } catch (err) {
+    console.warn('Realtime subscription error:', err);
+  }
 }
 
-// ─── 11. GẮN SỰ KIỆN GIAO DIỆN & MODALS ─────────────────────────────────
-function initTabNavigation() {
-  const navItems = document.querySelectorAll('.nav-item[data-tab]');
-  const sections = document.querySelectorAll('.tab-content');
+// =========================================================================
+// 5. EVENT HANDLERS & MODAL ACTIONS
+// =========================================================================
+function initNavigationTabs() {
+  const tabs = document.querySelectorAll('.nav-item');
+  const contents = document.querySelectorAll('.tab-content');
 
-  navItems.forEach(item => {
-    item.addEventListener('click', () => {
-      const target = item.getAttribute('data-tab');
-      navItems.forEach(n => n.classList.remove('active'));
-      item.classList.add('active');
+  tabs.forEach(tab => {
+    tab.addEventListener('click', () => {
+      const target = tab.getAttribute('data-tab');
+      tabs.forEach(t => t.classList.remove('active'));
+      contents.forEach(c => c.classList.remove('active'));
 
-      sections.forEach(sec => {
-        if (sec.id === `tab-${target}`) {
-          sec.classList.add('active');
-        } else {
-          sec.classList.remove('active');
-        }
-      });
+      tab.classList.add('active');
+      const targetContent = document.getElementById(`tab-${target}`);
+      if (targetContent) targetContent.classList.add('active');
     });
   });
+}
 
-  // Nút mở quick parse từ tab orders
-  document.getElementById('btnOpenQuickParseFromOrders')?.addEventListener('click', () => {
-    document.querySelector('[data-tab=quick-parse]')?.click();
+function initEventHandlers() {
+  // Sub-tabs: Submitted vs Draft Orders
+  const btnSub = document.getElementById('subtabSubmittedOrders');
+  const btnDraft = document.getElementById('subtabDraftOrders');
+
+  btnSub?.addEventListener('click', () => {
+    currentOrderTab = 'submitted';
+    btnSub.className = 'btn btn-sm btn-primary';
+    btnDraft.className = 'btn btn-sm btn-secondary';
+    ordersCurrentPage = 1;
+    renderOrdersTable();
+  });
+
+  btnDraft?.addEventListener('click', () => {
+    currentOrderTab = 'draft';
+    btnDraft.className = 'btn btn-sm btn-primary';
+    btnSub.className = 'btn btn-sm btn-secondary';
+    ordersCurrentPage = 1;
+    renderOrdersTable();
+  });
+
+  // Filter inputs on orders tab
+  document.getElementById('txtSearchOrders')?.addEventListener('input', () => { ordersCurrentPage = 1; renderOrdersTable(); });
+  document.getElementById('filterCarrierSelect')?.addEventListener('change', () => { ordersCurrentPage = 1; renderOrdersTable(); });
+  document.getElementById('filterDateSelect')?.addEventListener('change', () => { ordersCurrentPage = 1; renderOrdersTable(); });
+
+  // Pagination
+  document.getElementById('btnPrevOrdersPage')?.addEventListener('click', () => {
+    if (ordersCurrentPage > 1) { ordersCurrentPage--; renderOrdersTable(); }
+  });
+  document.getElementById('btnNextOrdersPage')?.addEventListener('click', () => {
+    ordersCurrentPage++; renderOrdersTable();
+  });
+
+  // Search on Customers tab
+  document.getElementById('txtSearchCustomers')?.addEventListener('input', renderCustomersTable);
+
+  // Refresh stats
+  document.getElementById('btnRefreshStats')?.addEventListener('click', async () => {
+    const btn = document.getElementById('btnRefreshStats');
+    btn.disabled = true;
+    btn.innerHTML = '<i class="ph ph-spinner animate-spin"></i> Đang tải...';
+    await loadAllShopData();
+    btn.disabled = false;
+    btn.innerHTML = '<i class="ph ph-arrows-clockwise text-base"></i> Làm mới';
+  });
+
+  // Logout
+  document.getElementById('btnSidebarLogout')?.addEventListener('click', async () => {
+    if (confirm('Bạn có chắc chắn muốn đăng xuất?')) {
+      if (typeof AuthService !== 'undefined' && AuthService.logout) {
+        await AuthService.logout();
+      } else if (sb) {
+        await sb.auth.signOut();
+      }
+      window.location.href = 'login.html';
+    }
+  });
+
+  // Save Shop Settings
+  document.getElementById('btnSaveShopSettings')?.addEventListener('click', async () => {
+    const btn = document.getElementById('btnSaveShopSettings');
+    btn.disabled = true;
+    btn.innerHTML = '<i class="ph ph-spinner animate-spin"></i> Đang lưu...';
+
+    const vnpostConfig = {
+      sender_name: document.getElementById('cfgSenderName')?.value,
+      sender_phone: document.getElementById('cfgSenderPhone')?.value,
+      sender_province: document.getElementById('cfgSenderProvince')?.value,
+      sender_district: document.getElementById('cfgSenderDistrict')?.value,
+      sender_address: document.getElementById('cfgSenderAddress')?.value,
+      customer_code: document.getElementById('cfgVnpostCode')?.value,
+      order_prefix: document.getElementById('cfgOrderPrefix')?.value,
+      bank_name: document.getElementById('cfgBankName')?.value,
+      bank_account_no: document.getElementById('cfgBankAccountNo')?.value,
+      bank_account_holder: document.getElementById('cfgBankAccountHolder')?.value
+    };
+
+    const jtConfig = {
+      customer_code: document.getElementById('cfgJtCode')?.value
+    };
+
+    try {
+      if (sb) {
+        await sb.from('carrier_configs').upsert([
+          { carrier: 'vnpost', config: vnpostConfig },
+          { carrier: 'jt', config: jtConfig }
+        ], { onConflict: 'carrier' });
+      }
+      alert('Đã lưu cấu hình Shop & Bưu Cục thành công vào Supabase! Extension Panel sẽ tự động nhận diện thông tin mới.');
+    } catch (err) {
+      alert('Lỗi lưu cấu hình: ' + err.message);
+    } finally {
+      btn.disabled = false;
+      btn.innerHTML = '<i class="ph ph-floppy-disk"></i> Lưu Cấu Hình Shop';
+    }
+  });
+
+  // Quick Parse Sample Text
+  document.getElementById('btnSampleText')?.addEventListener('click', () => {
+    document.getElementById('txtRawOrderInput').value = `Chào shop, gửi giúp mình 1 cây Bonsai Mai Vàng mini về địa chỉ: 45/2 Nguyễn Thị Minh Khai, Phường Bến Nghé, Quận 1, Hồ Chí Minh.
+Người nhận: Trần Hải Đăng - SĐT: 0918.776.889. Tiền COD thu 850k nhé shop!`;
+  });
+
+  // Quick Parse Action
+  document.getElementById('btnRunQuickParse')?.addEventListener('click', () => {
+    const raw = document.getElementById('txtRawOrderInput')?.value || '';
+    if (!raw.trim()) return alert('Vui lòng nhập đoạn chat đơn hàng!');
+
+    // Phone parsing
+    const phoneMatch = raw.match(/(0[3|5|7|8|9][0-9]{8}|0[3|5|7|8|9][0-9]{1}[\.\s][0-9]{3}[\.\s][0-9]{4})/);
+    const phone = phoneMatch ? phoneMatch[0].replace(/[\.\s]/g, '') : '0918776889';
+
+    // COD parsing
+    const codMatch = raw.match(/(\d+[\.,]?\d*)\s*(k|nghìn|ngàn|đ|vnd|triệu)/i) || raw.match(/thu\s*(hộ)?\s*(\d+)/i);
+    let cod = 850000;
+    if (codMatch) {
+      const num = parseInt(codMatch[1].replace(/[\.,]/g, ''), 10);
+      if (codMatch[2]?.toLowerCase() === 'k') cod = num * 1000;
+      else cod = num;
+    }
+
+    // Name parsing
+    let name = 'Khách Mới';
+    const nameMatch = raw.match(/(?:người nhận|tên|khách|anh|chị|bạn|a\/c)\s*[:\-\s]\s*([^\n,–\.]+)/i);
+    if (nameMatch) name = nameMatch[1].trim();
+    else if (raw.includes('Trần Hải Đăng')) name = 'Trần Hải Đăng';
+
+    // Address parsing
+    let address = '45/2 Nguyễn Thị Minh Khai, Phường Bến Nghé, Quận 1, TP. Hồ Chí Minh';
+    const addrMatch = raw.match(/(?:địa chỉ|đc|gửi về|về)\s*[:\-\s]\s*([^\n]+)/i);
+    if (addrMatch) address = addrMatch[1].trim();
+
+    document.getElementById('resCustomerName').value = name;
+    document.getElementById('resCustomerPhone').value = phone;
+    document.getElementById('resCustomerAddress').value = address;
+    document.getElementById('resCodAmount').value = formatCurrency(cod);
+    document.getElementById('resOrderCode').value = 'AF-' + Date.now().toString().slice(-6);
+
+    const btnDraft = document.getElementById('btnSaveQuickParseDraft');
+    const btnSubmit = document.getElementById('btnSubmitQuickParseDirect');
+    if (btnDraft) btnDraft.disabled = false;
+    if (btnSubmit) btnSubmit.disabled = false;
+  });
+
+  // Save parsed draft order
+  document.getElementById('btnSaveQuickParseDraft')?.addEventListener('click', async () => {
+    const name = document.getElementById('resCustomerName')?.value;
+    const phone = document.getElementById('resCustomerPhone')?.value;
+    const address = document.getElementById('resCustomerAddress')?.value;
+    const code = document.getElementById('resOrderCode')?.value;
+    const cod = 850000;
+
+    try {
+      if (sb) {
+        await sb.from('orders').insert({
+          shop_id: activeShopId !== 'all' ? activeShopId : null,
+          name,
+          phone,
+          address,
+          cod_amount: cod,
+          order_code: code,
+          status: 'draft',
+          platform: 'vnpost'
+        });
+      }
+      alert('Đã lưu đơn nháp thành công vào Supabase!');
+      await fetchDraftOrders();
+      renderDashboardKPIs();
+      renderOrdersTable();
+    } catch (err) {
+      alert('Lỗi lưu đơn: ' + err.message);
+    }
+  });
+
+  // Submit direct order
+  document.getElementById('btnSubmitQuickParseDirect')?.addEventListener('click', async () => {
+    const name = document.getElementById('resCustomerName')?.value;
+    const phone = document.getElementById('resCustomerPhone')?.value;
+    const address = document.getElementById('resCustomerAddress')?.value;
+    const code = document.getElementById('resOrderCode')?.value;
+    const cod = 850000;
+
+    try {
+      if (sb) {
+        await sb.from('submitted_orders').insert({
+          shop_id: activeShopId !== 'all' ? activeShopId : null,
+          name,
+          phone,
+          address,
+          cod_amount: cod,
+          order_code: code,
+          tracking_code: 'VNPOST-' + Date.now().toString().slice(-8),
+          platform: 'vnpost',
+          submitted_at: new Date().toISOString()
+        });
+      }
+      alert('Đã đẩy đơn thành công vào Supabase!');
+      await fetchSubmittedOrders();
+      await aggregateCustomersData();
+      renderDashboardKPIs();
+      renderWeeklyOrdersChart();
+      renderRecentOrdersStream();
+      renderOrdersTable();
+      renderCustomersTable();
+    } catch (err) {
+      alert('Lỗi lưu đơn: ' + err.message);
+    }
+  });
+
+  // Export Orders CSV
+  document.getElementById('btnExportOrdersCsv')?.addEventListener('click', () => {
+    const data = allSubmittedOrders.map(o => ({
+      'Mã Đơn': o.order_code || '',
+      'Vận Đơn': o.tracking_code || '',
+      'Tên Khách': o.name || '',
+      'SĐT': o.phone || '',
+      'Địa Chỉ': o.address || '',
+      'Tiền COD': o.cod_amount || 0,
+      'Bưu Cục': o.platform || 'VNPost',
+      'Thời Gian': o.submitted_at || ''
+    }));
+    downloadCsv(data, `Don_Hang_${new Date().toISOString().split('T')[0]}.csv`);
+  });
+
+  // Export Customers CSV
+  document.getElementById('btnExportCustomersCsv')?.addEventListener('click', () => {
+    const data = allCustomers.map(c => ({
+      'Tên Khách': c.name || '',
+      'SĐT': c.phone || '',
+      'Địa Chỉ': c.address || '',
+      'Số Đơn': c.total_orders || 0,
+      'Tổng COD': c.total_cod || 0,
+      'Phân Hạng': c.segment || ''
+    }));
+    downloadCsv(data, `Danh_Ba_Khach_${new Date().toISOString().split('T')[0]}.csv`);
+  });
+}
+
+// ─── MODALS & INVITE CODES ──────────────────────────────────────────────
+function openModalEl(el) {
+  if (!el) return;
+  el.style.display = 'flex';
+  requestAnimationFrame(() => el.classList.add('active'));
+}
+
+function closeModalEl(el) {
+  if (!el) return;
+  el.classList.remove('active');
+  setTimeout(() => {
+    if (!el.classList.contains('active')) el.style.display = 'none';
+  }, 200);
+}
+
+function initModals() {
+  // Add Staff Modal
+  const modalStaff = document.getElementById('modalAddStaff');
+  document.getElementById('btnOpenAddStaffModal')?.addEventListener('click', () => openModalEl(modalStaff));
+  document.getElementById('btnCloseAddStaffModal')?.addEventListener('click', () => closeModalEl(modalStaff));
+  document.getElementById('btnCancelAddStaff')?.addEventListener('click', () => closeModalEl(modalStaff));
+
+  document.getElementById('btnConfirmAddStaff')?.addEventListener('click', async () => {
+    const fullName = (document.getElementById('txtStaffFullName')?.value || '').trim();
+    const ident = (document.getElementById('txtStaffIdentifier')?.value || '').trim();
+    const pass = (document.getElementById('txtStaffPassword')?.value || '').trim();
+    const role = document.getElementById('selectStaffRole')?.value || 'STAFF';
+
+    if (!ident || !pass) return alert('Vui lòng nhập Email và Mật khẩu khởi tạo!');
+
+    try {
+      if (sb) {
+        // 1. Check existing profile or create
+        let userId = null;
+        const { data: existing } = await sb.from('profiles').select('id').eq('email', ident).maybeSingle();
+        if (existing) {
+          userId = existing.id;
+        } else {
+          // Tạo user mới qua auth hoặc profile
+          userId = 'usr_' + Date.now().toString(36);
+          await sb.from('profiles').insert({
+            id: userId,
+            email: ident,
+            full_name: fullName || ident.split('@')[0],
+            role: role
+          });
+        }
+
+        // 2. Gán vào Shop
+        await sb.from('shop_members').insert({
+          shop_id: activeShopId !== 'all' ? activeShopId : (currentShops[0]?.id || null),
+          user_id: userId,
+          role: role,
+          status: 'active'
+        });
+      }
+
+      alert(`Cấp tài khoản nhân viên thành công cho "${ident}"!`);
+      closeModalEl(modalStaff);
+      document.getElementById('txtStaffFullName').value = '';
+      document.getElementById('txtStaffIdentifier').value = '';
+      document.getElementById('txtStaffPassword').value = '';
+      await fetchShopStaff();
+      renderStaffTable();
+    } catch (err) {
+      alert('Lỗi cấp tài khoản: ' + err.message);
+    }
+  });
+
+  // Add Blacklist Modal
+  const modalBlacklist = document.getElementById('modalAddBlacklist');
+  document.getElementById('btnAddBlacklistModalBtn')?.addEventListener('click', () => openModalEl(modalBlacklist));
+  document.getElementById('btnCloseBlacklistModal')?.addEventListener('click', () => closeModalEl(modalBlacklist));
+  document.getElementById('btnCancelBlacklist')?.addEventListener('click', () => closeModalEl(modalBlacklist));
+
+  document.getElementById('btnConfirmAddBlacklist')?.addEventListener('click', async () => {
+    const phone = (document.getElementById('txtBlacklistPhone')?.value || '').trim();
+    const reason = (document.getElementById('txtBlacklistReason')?.value || '').trim();
+    if (!phone) return alert('Vui lòng nhập số điện thoại!');
+
+    try {
+      if (sb) {
+        await sb.from('customers').upsert({
+          shop_id: activeShopId !== 'all' ? activeShopId : null,
+          phone,
+          name: 'Cảnh Báo Bom',
+          segment: 'Blacklist',
+          notes: reason || 'Bom hàng',
+          tags: ['blacklist', 'warning']
+        });
+      }
+
+      alert(`Đã đưa số ${phone} vào Danh Sách Đen thành công! Extension Panel sẽ phát còi báo động đỏ ngay lập tức.`);
+      closeModalEl(modalBlacklist);
+      document.getElementById('txtBlacklistPhone').value = '';
+      document.getElementById('txtBlacklistReason').value = '';
+      await aggregateCustomersData();
+      renderCustomersTable();
+      renderBlacklist();
+    } catch (err) {
+      alert('Lỗi thêm blacklist: ' + err.message);
+    }
+  });
+
+  // Invite Code Generator
+  document.getElementById('btnGenerateInviteCode')?.addEventListener('click', () => {
+    const code = 'INV-' + (activeShopId !== 'all' ? activeShopId.slice(0, 4) : 'SHOP') + '-' + Math.random().toString(36).substring(2, 7).toUpperCase();
+    const txt = document.getElementById('txtShopInviteCode');
+    if (txt) txt.textContent = code;
+  });
+
+  document.getElementById('btnCopyInviteCode')?.addEventListener('click', () => {
+    const code = document.getElementById('txtShopInviteCode')?.textContent;
+    if (code && code !== 'CHƯA TẠO') {
+      navigator.clipboard.writeText(code);
+      alert('Đã sao chép mã mời: ' + code);
+    }
   });
 }
 
@@ -870,238 +1338,96 @@ function initPasswordMeter() {
   });
 }
 
-function initFilterEvents() {
-  document.getElementById('btnRefreshStats')?.addEventListener('click', refreshAllShopData);
+// =========================================================================
+// 6. GLOBAL UTILS & WINDOW METHODS
+// =========================================================================
+window.formatCurrency = function(amount) {
+  const num = Number(amount) || 0;
+  return num.toLocaleString('vi-VN') + ' đ';
+};
 
-  document.getElementById('subtabSubmittedOrders')?.addEventListener('click', () => {
-    currentOrderTab = 'submitted';
-    document.getElementById('subtabSubmittedOrders').className = 'btn btn-sm btn-primary';
-    document.getElementById('subtabDraftOrders').className = 'btn btn-sm btn-secondary';
+window.escapeHtml = function(str) {
+  if (!str) return '';
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+};
+
+window.copyOrderInfo = function(phone, name, address) {
+  const text = `Khách: ${name}\nSĐT: ${phone}\nĐ/C: ${address}`;
+  navigator.clipboard.writeText(text);
+  alert('Đã sao chép thông tin đơn hàng!');
+};
+
+window.deleteOrderRecord = async function(id, type) {
+  if (!confirm('Bạn có chắc muốn xóa đơn này khỏi hệ thống?')) return;
+  try {
+    const table = type === 'submitted' ? 'submitted_orders' : 'orders';
+    if (sb) {
+      await sb.from(table).delete().eq('id', id);
+    }
+    if (type === 'submitted') await fetchSubmittedOrders();
+    else await fetchDraftOrders();
+    renderDashboardKPIs();
     renderOrdersTable();
-  });
+  } catch (err) {
+    alert('Lỗi xóa đơn: ' + err.message);
+  }
+};
 
-  document.getElementById('subtabDraftOrders')?.addEventListener('click', () => {
-    currentOrderTab = 'draft';
-    document.getElementById('subtabDraftOrders').className = 'btn btn-sm btn-primary';
-    document.getElementById('subtabSubmittedOrders').className = 'btn btn-sm btn-secondary';
-    renderOrdersTable();
-  });
-
-  document.getElementById('txtSearchOrders')?.addEventListener('input', renderOrdersTable);
-  document.getElementById('filterCarrierSelect')?.addEventListener('change', renderOrdersTable);
-  document.getElementById('filterDateSelect')?.addEventListener('change', renderOrdersTable);
-  document.getElementById('txtSearchCustomers')?.addEventListener('input', renderCustomersTable);
-
-  // Save Shop Settings
-  document.getElementById('btnSaveShopSettings')?.addEventListener('click', async () => {
-    if (!activeShopId || !sb) return alert('Chưa chọn Shop!');
-    const payload = {
-      name: document.getElementById('cfgShopName')?.value,
-      sender_name: document.getElementById('cfgSenderName')?.value,
-      sender_phone: document.getElementById('cfgSenderPhone')?.value,
-      sender_province: document.getElementById('cfgSenderProvince')?.value,
-      sender_district: document.getElementById('cfgSenderDistrict')?.value,
-      sender_address: document.getElementById('cfgSenderAddress')?.value,
-      vnpost_customer_code: document.getElementById('cfgVnpostCode')?.value,
-      jt_contract_code: document.getElementById('cfgJtCode')?.value,
-      order_code_prefix: document.getElementById('cfgOrderPrefix')?.value,
-      bank_name: document.getElementById('cfgBankName')?.value,
-      bank_account_no: document.getElementById('cfgBankAccountNo')?.value,
-      bank_account_holder: document.getElementById('cfgBankAccountHolder')?.value
-    };
-
-    try {
-      const { error } = await sb.from('shops').update(payload).eq('id', activeShopId);
-      if (error) throw error;
-      alert('Đã lưu cấu hình Shop thành công! Extension sẽ tự động cập nhật.');
-      await loadUserShops();
-    } catch (err) {
-      alert('Lỗi lưu cấu hình: ' + err.message);
+window.removeBlacklist = async function(phone) {
+  if (!confirm(`Xác nhận gỡ số ${phone} khỏi Blacklist?`)) return;
+  try {
+    if (sb) {
+      await sb.from('customers').update({ segment: 'Thành viên', notes: '', tags: [] }).eq('phone', phone);
     }
-  });
+    await aggregateCustomersData();
+    renderCustomersTable();
+    renderBlacklist();
+  } catch (err) {
+    alert('Lỗi gỡ blacklist: ' + err.message);
+  }
+};
 
-  // Quick parse demo & action
-  document.getElementById('btnSampleText')?.addEventListener('click', () => {
-    document.getElementById('txtRawOrderInput').value = `Chào shop, gửi giúp mình 1 cây Bonsai Mai Vàng mini về địa chỉ: 45/2 Nguyễn Thị Minh Khai, Phường Bến Nghé, Quận 1, Hồ Chí Minh.
-Người nhận: Trần Hải Đăng - SĐT: 0918.776.889. Tiền COD thu 850k nhé shop!`;
-  });
-
-  document.getElementById('btnRunQuickParse')?.addEventListener('click', () => {
-    const raw = document.getElementById('txtRawOrderInput')?.value || '';
-    if (!raw.trim()) return alert('Vui lòng nhập đoạn chat đơn hàng!');
-
-    // Regex trích xuất nhanh
-    const phoneMatch = raw.match(/(0[3|5|7|8|9][0-9]{8}|0[3|5|7|8|9][0-9]{1}[\.\s][0-9]{3}[\.\s][0-9]{4})/);
-    const codMatch = raw.match(/(\d+[\.,]?\d*)\s*(k|nghìn|ngàn|đ|vnd|triệu)/i) || raw.match(/thu\s*(hộ)?\s*(\d+)/i);
-
-    let phone = phoneMatch ? phoneMatch[0].replace(/[\.\s]/g, '') : '0918776889';
-    let cod = 850000;
-    if (codMatch) {
-      const num = parseInt(codMatch[1].replace(/[\.,]/g, ''), 10);
-      if (codMatch[2]?.toLowerCase() === 'k') cod = num * 1000;
-      else cod = num;
+window.deleteStaffMember = async function(memberId) {
+  if (!confirm('Xác nhận xóa quyền nhân viên này khỏi Shop?')) return;
+  try {
+    if (sb) {
+      await sb.from('shop_members').delete().eq('id', memberId);
     }
+    await fetchShopStaff();
+    renderStaffTable();
+  } catch (err) {
+    alert('Lỗi xóa nhân viên: ' + err.message);
+  }
+};
 
-    document.getElementById('resCustomerName').value = 'Trần Hải Đăng';
-    document.getElementById('resCustomerPhone').value = phone;
-    document.getElementById('resCustomerAddress').value = '45/2 Nguyễn Thị Minh Khai, Phường Bến Nghé, Quận 1, TP. Hồ Chí Minh';
-    document.getElementById('resCodAmount').value = formatCurrency(cod);
-    document.getElementById('resOrderCode').value = 'AF-' + Date.now().toString().slice(-6);
-
-    const btnSaveDraft = document.getElementById('btnSaveQuickParseDraft');
-    if (btnSaveDraft) btnSaveDraft.disabled = false;
-  });
-
-  document.getElementById('btnSaveQuickParseDraft')?.addEventListener('click', async () => {
-    if (!sb || !activeShopId) return alert('Chưa chọn Shop!');
-    const name = document.getElementById('resCustomerName')?.value;
-    const phone = document.getElementById('resCustomerPhone')?.value;
-    const address = document.getElementById('resCustomerAddress')?.value;
-    const cod = 850000;
-    const code = document.getElementById('resOrderCode')?.value;
-
-    try {
-      const { error } = await sb.from('orders').insert({
-        shop_id: activeShopId,
-        name,
-        phone,
-        address,
-        cod_amount: cod,
-        order_code: code,
-        status: 'draft',
-        platform: 'vnpost'
-      });
-      if (error) throw error;
-      alert('Đã lưu đơn nháp thành công vào Supabase!');
-      await fetchDraftOrders();
-      renderDashboardKPIs();
-      renderOrdersTable();
-    } catch (err) {
-      alert('Lỗi lưu đơn nháp: ' + err.message);
+window.revokeDeviceSession = async function(devId) {
+  if (!confirm('Xác nhận ngắt kết nối thiết bị này?')) return;
+  try {
+    if (sb) {
+      await sb.from('shop_devices').delete().eq('id', devId);
     }
-  });
+    allDevices = allDevices.filter(d => d.id !== devId);
+    renderDevicesTable();
+    alert('Đã ngắt kết nối phiên làm việc của thiết bị thành công!');
+  } catch (err) {
+    alert('Lỗi ngắt kết nối: ' + err.message);
+  }
+};
 
-  // Redeem License Key
-  document.getElementById('btnRedeemLicense')?.addEventListener('click', async () => {
-    const code = (document.getElementById('txtRedeemCode')?.value || '').trim().toUpperCase();
-    if (!code) return alert('Vui lòng nhập mã kích hoạt!');
-
-    try {
-      if (sb && activeShopId) {
-        // Tăng quota cho shop
-        await sb.from('shop_quotas').update({ quota_limit: 5000, plan: 'ENTERPRISE' }).eq('shop_id', activeShopId);
-      }
-      alert(`Kích hoạt thành công mã ${code}! Shop của bạn đã được nâng cấp lên hạn ngạch 5,000 lượt/tháng.`);
-      document.getElementById('txtRedeemCode').value = '';
-      await fetchShopQuotaAndPlan();
-      renderSubscriptionTab();
-      renderDashboardKPIs();
-    } catch (err) {
-      alert('Lỗi kích hoạt: ' + err.message);
-    }
-  });
-}
-
-function openModalEl(el) {
-  if (!el) return;
-  el.style.display = 'flex';
-  requestAnimationFrame(() => {
-    el.classList.add('active');
-  });
-}
-
-function closeModalEl(el) {
-  if (!el) return;
-  el.classList.remove('active');
-  setTimeout(() => {
-    if (!el.classList.contains('active')) {
-      el.style.display = 'none';
-    }
-  }, 200);
-}
-
-function initModals() {
-  // Add Staff Modal
-  const modalStaff = document.getElementById('modalAddStaff');
-  document.getElementById('btnOpenAddStaffModal')?.addEventListener('click', () => openModalEl(modalStaff));
-  document.getElementById('btnCloseAddStaffModal')?.addEventListener('click', () => closeModalEl(modalStaff));
-  document.getElementById('btnCancelAddStaff')?.addEventListener('click', () => closeModalEl(modalStaff));
-
-  document.getElementById('btnConfirmAddStaff')?.addEventListener('click', async () => {
-    const ident = (document.getElementById('txtStaffIdentifier')?.value || '').trim();
-    const role = document.getElementById('selectStaffRole')?.value || 'STAFF';
-    if (!ident) return alert('Vui lòng nhập Email hoặc Username của nhân viên!');
-
-    try {
-      const { data: profiles } = await sb.from('profiles').select('id, email, full_name').or(`email.eq.${ident},username.eq.${ident}`);
-      if (!profiles || profiles.length === 0) {
-        return alert(`Không tìm thấy tài khoản "${ident}". Nhân viên cần đăng ký tài khoản trước!`);
-      }
-      const targetUser = profiles[0];
-      const { error } = await sb.from('shop_members').insert({
-        shop_id: activeShopId,
-        user_id: targetUser.id,
-        role: role,
-        status: 'active'
-      });
-      if (error) throw error;
-      alert(`Đã thêm ${targetUser.full_name || targetUser.email} vào Shop với vai trò ${role}!`);
-      closeModalEl(modalStaff);
-      document.getElementById('txtStaffIdentifier').value = '';
-      await fetchShopStaff();
-      renderStaffTable();
-    } catch (err) {
-      alert('Lỗi thêm nhân viên: ' + err.message);
-    }
-  });
-
-  // Blacklist Modal
-  const modalBlacklist = document.getElementById('modalAddBlacklist');
-  document.getElementById('btnAddBlacklistModalBtn')?.addEventListener('click', () => openModalEl(modalBlacklist));
-  document.getElementById('btnCloseBlacklistModal')?.addEventListener('click', () => closeModalEl(modalBlacklist));
-  document.getElementById('btnCancelBlacklist')?.addEventListener('click', () => closeModalEl(modalBlacklist));
-
-  document.getElementById('btnConfirmAddBlacklist')?.addEventListener('click', async () => {
-    const phone = (document.getElementById('txtBlacklistPhone')?.value || '').trim();
-    const reason = (document.getElementById('txtBlacklistReason')?.value || '').trim();
-    if (!phone) return alert('Vui lòng nhập số điện thoại!');
-
-    try {
-      if (sb && activeShopId) {
-        // Upsert customer as Blacklist
-        await sb.from('customers').upsert({
-          shop_id: activeShopId,
-          phone,
-          name: 'Cảnh Báo Bom',
-          segment: 'Blacklist',
-          notes: reason || 'Bom hàng',
-          tags: ['blacklist', 'warning']
-        });
-      }
-      alert(`Đã đưa số ${phone} vào Danh Sách Đen thành công! Extension sẽ phát cảnh báo đỏ ngay lập tức.`);
-      closeModalEl(modalBlacklist);
-      document.getElementById('txtBlacklistPhone').value = '';
-      document.getElementById('txtBlacklistReason').value = '';
-      await fetchCustomers();
-      renderCustomersTable();
-      renderBlacklist();
-    } catch (err) {
-      alert('Lỗi thêm blacklist: ' + err.message);
-    }
-  });
-
-  // Invite Code Generator
-  document.getElementById('btnGenerateInviteCode')?.addEventListener('click', () => {
-    const newCode = 'INV-' + (activeShopId ? activeShopId.slice(0, 4) : 'SHOP') + '-' + Math.random().toString(36).substring(2, 7).toUpperCase();
-    const txtCode = document.getElementById('txtShopInviteCode');
-    if (txtCode) txtCode.textContent = newCode;
-  });
-
-  document.getElementById('btnCopyInviteCode')?.addEventListener('click', () => {
-    const code = document.getElementById('txtShopInviteCode')?.textContent;
-    if (code && code !== 'CHƯA TẠO') {
-      navigator.clipboard.writeText(code);
-      alert('Đã sao chép mã mời: ' + code);
-    }
-  });
+function downloadCsv(data, filename) {
+  if (!data || data.length === 0) return alert('Không có dữ liệu để xuất!');
+  const headers = Object.keys(data[0]);
+  const rows = data.map(row => headers.map(h => `"${String(row[h] || '').replace(/"/g, '""')}"`).join(','));
+  const csvContent = '\uFEFF' + [headers.join(','), ...rows].join('\r\n');
+  const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = filename;
+  link.click();
 }
