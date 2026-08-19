@@ -178,49 +178,49 @@
     <nav class="nav-menu">
       <button class="nav-item active" data-tab="dashboard">
         <i class="ph ph-chart-line-up text-lg"></i>
-        <span>📊 Tổng Quan & KPIs</span>
+        <span>Tổng Quan & KPIs</span>
       </button>
 
       <button class="nav-item" data-tab="orders">
-        <i class="ph ph-paper-plane-tilt text-lg"></i>
-        <span>📦 Đơn Hàng Đã Lên Đơn</span>
+        <i class="ph ph-package text-lg"></i>
+        <span>Đơn Hàng Đã Lên Đơn</span>
       </button>
 
       <button class="nav-item" data-tab="customers">
-        <i class="ph ph-address-book text-lg"></i>
-        <span>📇 Khách Hàng & Blacklist</span>
+        <i class="ph ph-users text-lg"></i>
+        <span>Khách Hàng & Blacklist</span>
       </button>
 
       <button class="nav-item" data-tab="staff">
-        <i class="ph ph-users-three text-lg"></i>
-        <span>👥 Nhân Viên & Phân Quyền</span>
+        <i class="ph ph-user-gear text-lg"></i>
+        <span>Nhân Viên & Phân Quyền</span>
       </button>
 
       <button class="nav-item" data-tab="settings">
         <i class="ph ph-storefront text-lg"></i>
-        <span>🏪 Cấu Hình Shop & Bưu Cục</span>
+        <span>Cấu Hình Shop & Bưu Cục</span>
       </button>
 
       <button class="nav-item" data-tab="devices">
-        <i class="ph ph-device-mobile text-lg"></i>
-        <span>📱 Thiết Bị & Bảo Mật</span>
+        <i class="ph ph-shield-check text-lg"></i>
+        <span>Thiết Bị & Bảo Mật</span>
       </button>
 
       <button class="nav-item" data-tab="subscription">
         <i class="ph ph-lightning text-lg"></i>
-        <span>⚡ Hạn Ngạch AI & Gói Cước</span>
+        <span>Hạn Ngạch AI & Gói Cước</span>
       </button>
 
       <button class="nav-item" data-tab="quick-parse">
         <i class="ph ph-magic-wand text-lg"></i>
-        <span>✨ Bóc Tách Đơn Nhanh</span>
+        <span>Bóc Tách Đơn Nhanh</span>
       </button>
     </nav>
 
     <div class="sidebar-footer">
-      <div id="sideAdminLinkContainer" style="margin-bottom: 8px; display: none;">
-        <a href="admin.html" class="side-link" style="display:flex;align-items:center;gap:8px;padding:8px 12px;border-radius:8px;font-size:12px;font-weight:700;color:#6366f1;background:rgba(99,102,241,0.08);text-decoration:none;" title="Chuyển sang Quản Trị Hệ Thống">
-          <i class="ph ph-crown text-base"></i>
+      <div id="sideAdminLinkContainer" style="margin-bottom: 8px;">
+        <a href="admin.html" class="side-link" style="display:flex; align-items:center; gap:8px; padding:10px 12px; border-radius:10px; font-size:12.5px; font-weight:700; color:#4F46E5; background:#EEF2FF; border:1px solid #C7D2FE; text-decoration:none; transition:all 0.2s;" title="Chuyển sang Quản Trị Hệ Thống Master Admin">
+          <i class="ph ph-crown text-base" style="color:#F59E0B;"></i>
           <span>Master Admin Portal</span>
         </a>
       </div>
@@ -236,17 +236,23 @@
     <!-- TOPBAR -->
     <header class="topbar">
       <div style="display:flex; align-items:center; gap:12px;">
-        <h1 class="topbar-title" id="topbarShopTitle">SHOP COMMAND CENTER</h1>
-        <span class="owner-badge" id="topbarUserRoleBadge">OWNER</span>
+        <h1 class="topbar-title" id="topbarShopTitle">SHOP TAI</h1>
+        <span class="owner-badge" id="topbarUserRoleBadge">CHỦ SHOP</span>
         <span class="status-online" id="cloudSyncStatus" title="Supabase Realtime Cloud Connected">Cloud Live Online</span>
       </div>
 
       <div class="topbar-right">
+        <!-- Nút Chuyển Nhanh Master Admin Portal -->
+        <a href="admin.html" class="btn btn-secondary btn-sm" id="topbarAdminPortalBtn" style="display:inline-flex; align-items:center; gap:6px; font-weight:700; color:#4F46E5; background:#EEF2FF; border:1px solid #C7D2FE; text-decoration:none; font-size:12px;" title="Truy cập Trang Quản Trị Hệ Thống Master Admin">
+          <i class="ph ph-crown text-base" style="color:#F59E0B;"></i>
+          <span>Master Admin</span>
+        </a>
+
         <!-- Active Shop Selector -->
         <div style="display:flex; align-items:center; gap:6px; background:var(--card); padding:4px 10px; border-radius:8px; border:1px solid var(--border);">
           <span style="font-size:11px; font-weight:700; color:var(--text-s);"><i class="ph ph-storefront"></i> Chi nhánh:</span>
           <select id="topbarShopSelect" style="border:none; background:transparent; font-size:12px; font-weight:700; color:var(--primary); outline:none; cursor:pointer;">
-            <option value="all">🌐 Toàn bộ Chi Nhánh & Đơn Hàng</option>
+            <option value="all">🏪 Đang tải Cửa hàng...</option>
           </select>
         </div>
 
@@ -265,7 +271,7 @@
           <div class="avatar" id="topbarAvatar" style="background:#4F46E5; color:#fff;">AF</div>
           <div class="user-pill-info">
             <span class="user-pill-name" id="topbarUserName">Đang tải...</span>
-            <span class="user-pill-role" id="topbarUserRoleText" style="color:#4F46E5; font-weight:700;">Owner</span>
+            <span class="user-pill-role" id="topbarUserRoleText" style="color:#4F46E5; font-weight:700;">Chủ Shop</span>
           </div>
         </div>
       </div>
