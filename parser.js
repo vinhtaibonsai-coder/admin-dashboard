@@ -8,14 +8,15 @@
       if (!text) return 0;
       let s = text.toLowerCase().replace(/\s+/g, '');
 
-      s = s.replace(/^(?:cod|tiền|tien|thu\s*hộ|thuho|thu\s*ho|tiềncod|tienco)[:\-\s]*/i, '');
+      s = s.replace(/^(?:cod|tiền|tien|thu\s*hộ|thuho|thu\s*ho|tiềncod|tienco|tiềnthu|tienthu)[:\-\s]*/i, '');
 
+      // 1. Dạng Triệu (vd: "1.8tr", "1tr8", "1tr800", "2.5tr", "2tr500k")
       let normalized = s.replace(/,/g, '.');
-      if (normalized.includes('tr')) {
-        const trIndex = normalized.indexOf('tr');
-        const afterTr = normalized.substring(trIndex + 2);
-        const cleanAfterTr = afterTr.replace(/k/g, '');
-        const cleanNormalized = normalized.substring(0, trIndex + 2) + cleanAfterTr;
+      if (normalized.includes('tr') || normalized.includes('triệu') || normalized.includes('trieu')) {
+        const cleanText = normalized.replace(/(?:triệu|trieu)/g, 'tr');
+        const trIndex = cleanText.indexOf('tr');
+        const afterTr = cleanText.substring(trIndex + 2).replace(/k/g, '');
+        const cleanNormalized = cleanText.substring(0, trIndex + 2) + afterTr;
 
         let parts = cleanNormalized.split('tr');
         const numBeforeTr = (parts[0].match(/[\d.]+$/) || [''])[0];
@@ -28,13 +29,16 @@
             val += parseFloat('0.' + suffix);
           } else if (suffix.length === 3) {
             val += parseFloat('0.' + suffix);
+          } else if (suffix.length >= 4) {
+            val += parseFloat(suffix) / 1000000;
           }
         }
         return Math.round(val * 1000000);
       }
 
-      if (s.includes('k')) {
-        let raw = s.replace(/k/g, '').replace(/,/g, '.');
+      // 2. Dạng nghìn có chữ 'k' (vd: "300k", "1.500k", "250k", "50k")
+      if (s.includes('k') || s.includes('nghìn') || s.includes('ngan') || s.includes('ngàn')) {
+        let raw = s.replace(/(?:k|nghìn|ngan|ngàn)/g, '').replace(/,/g, '.');
         const numMatch = raw.match(/[\d.]+/);
         if (!numMatch) return 0;
         raw = numMatch[0];
@@ -51,8 +55,25 @@
         return digitsOnly ? parseInt(digitsOnly, 10) * 1000 : 0;
       }
 
+      // 3. Dạng số có dấu chấm phân cách hàng nghìn (vd: "1.800.000", "300.000", "50.000")
+      if (/^\d{1,3}(?:\.\d{3})+$/.test(normalized)) {
+        const digits = normalized.replace(/\./g, '');
+        return parseInt(digits, 10) || 0;
+      }
+
+      // 4. Dạng số nguyên thuần (vd: "300", "250", "850", "50000", "1800000")
       const digits = normalized.replace(/\D/g, '');
-      return digits ? parseInt(digits, 10) : 0;
+      if (!digits) return 0;
+      const num = parseInt(digits, 10);
+      if (num > 0 && num < 1000) {
+        // Số dưới 1000 trong bóc đơn luôn là nghìn đồng (vd: Cod 300 -> 300.000đ, 250 -> 250.000đ)
+        return num * 1000;
+      }
+      if (num >= 1000 && num < 10000 && !normalized.includes('.')) {
+        // Số 4 chữ số trong bóc đơn (vd: 1200, 1500) là nghìn đồng (1.200k -> 1.200.000đ)
+        return num * 1000;
+      }
+      return num;
     },
 
     extractPhoneNumbers(text) {
