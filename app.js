@@ -72,6 +72,15 @@ document.addEventListener('DOMContentLoaded', async () => {
 });
 
 async function checkStrictAuth() {
+  // 1. Đảm bảo Supabase client có session token hợp lệ để bypass RLS
+  const token = localStorage.getItem('access_token');
+  const rToken = localStorage.getItem('refresh_token');
+  if (token && sb && sb.auth && typeof sb.auth.setSession === 'function') {
+    try {
+      await sb.auth.setSession({ access_token: token, refresh_token: rToken || '' });
+    } catch (_) {}
+  }
+
   if (typeof AuthService !== 'undefined' && AuthService.getCurrentUser) {
     currentSession = await AuthService.getCurrentUser().catch(() => null);
   }
@@ -83,6 +92,14 @@ async function checkStrictAuth() {
   if (!currentSession && sb) {
     const { data } = await sb.auth.getSession();
     currentSession = data?.session?.user || null;
+  }
+
+  // Fallback đọc từ profile trong localStorage
+  if (!currentSession) {
+    try {
+      const rawUser = localStorage.getItem('af_logged_user') || localStorage.getItem('profile');
+      if (rawUser) currentSession = JSON.parse(rawUser);
+    } catch (_) {}
   }
 
   // Nếu không có phiên đăng nhập -> Chặn ngay lập tức
@@ -112,6 +129,9 @@ async function checkStrictAuth() {
   let isSysAdmin = false;
   if (typeof AuthService !== 'undefined' && AuthService.isSystemAdmin) {
     isSysAdmin = await AuthService.isSystemAdmin().catch(() => false);
+  } else {
+    const roleStored = localStorage.getItem('current_role');
+    isSysAdmin = roleStored === 'SYSTEM_ADMIN' || roleStored === 'ADMIN' || currentProfile?.role === 'ADMIN' || currentProfile?.role === 'MASTER_ADMIN';
   }
 
   if (roleBadgeEl) roleBadgeEl.textContent = isSysAdmin ? 'SYSTEM ADMIN' : 'SHOP OWNER';
@@ -166,12 +186,13 @@ async function fetchShopsList() {
   if (!sb) return;
   try {
     // 1. Lấy toàn bộ danh sách shop đang hoạt động từ Supabase
-    const { data: shops } = await sb
+    const { data: shops, error: shopsErr } = await sb
       .from('shops')
       .select('id, name, code, is_active, status, owner_id')
       .is('deleted_at', null)
       .order('name');
-    currentShops = shops || [];
+
+    currentShops = (!shopsErr && shops) ? shops : [];
 
     // 2. Tìm shop được gán với user hiện tại (qua shop_members, profiles, hoặc owner_id)
     let userAssignedShop = null;
@@ -216,7 +237,46 @@ async function fetchShopsList() {
       }
     }
 
-    // 3. Quyết định Shop Kích Hoạt (Active Shop)
+    // 3. Nếu chưa có bất kỳ shop nào trong DB cho user này, tự động khởi tạo Shop thật
+    if (currentShops.length === 0 && currentSession && currentSession.id) {
+      let defaultName = 'Shop Lũa Thủy Sinh';
+      if (currentProfile?.full_name && currentProfile.full_name !== 'Chủ Shop') {
+        defaultName = 'Shop ' + currentProfile.full_name;
+      } else if (currentSession.email) {
+        const domainOrName = currentSession.email.split('@')[0];
+        defaultName = domainOrName.toLowerCase().includes('tai') || domainOrName.toLowerCase().includes('thuy') 
+          ? 'Shop Lũa Thủy Sinh' 
+          : 'Shop ' + domainOrName.toUpperCase();
+      }
+
+      const { data: newShop, error: createShopErr } = await sb.from('shops').insert({
+        name: defaultName,
+        owner_id: currentSession.id,
+        status: 'active'
+      }).select().maybeSingle();
+
+      if (newShop && !createShopErr) {
+        currentShops = [newShop];
+        userAssignedShop = newShop;
+        userPermittedShops = [newShop];
+        activeShopId = newShop.id;
+        
+        await sb.from('shop_members').insert({
+          shop_id: newShop.id,
+          user_id: currentSession.id,
+          role: 'OWNER'
+        }).catch(() => {});
+
+        await sb.from('shop_quotas').insert({
+          shop_id: newShop.id,
+          quota_limit: 1000,
+          quota_used: 0,
+          plan: 'PRO'
+        }).catch(() => {});
+      }
+    }
+
+    // 4. Quyết định Shop Kích Hoạt (Active Shop)
     const savedShopId = localStorage.getItem('af_active_shop_id');
     if (savedShopId && currentShops.some(s => s.id === savedShopId)) {
       activeShopId = savedShopId;
@@ -230,9 +290,11 @@ async function fetchShopsList() {
     if (activeShop) {
       activeShopId = activeShop.id;
       localStorage.setItem('af_active_shop_id', activeShop.id);
+      localStorage.setItem('current_shop_id', activeShop.id);
+      localStorage.setItem('current_shop_name', activeShop.name);
     }
 
-    // 4. Cập nhật Tên Shop thật lên Topbar & Sidebar Brand Sub
+    // 5. Cập nhật Tên Shop thật lên Topbar & Sidebar Brand Sub
     const titleEl = document.getElementById('topbarShopTitle');
     const sideSubEl = document.getElementById('sidebarShopName');
     const shopDisplayName = activeShop ? activeShop.name : 'AUTO FILL ORDER';
@@ -244,7 +306,7 @@ async function fetchShopsList() {
       sideSubEl.textContent = '🏪 ' + activeShop.name;
     }
 
-    // 5. Cập nhật Dropdown Chi nhánh / Shop
+    // 6. Cập nhật Dropdown Chi nhánh / Shop
     const selectEl = document.getElementById('topbarShopSelect');
     if (selectEl) {
       const isSysAdmin = currentProfile?.role === 'ADMIN' || 
@@ -263,7 +325,11 @@ async function fetchShopsList() {
       selectEl.onchange = (e) => {
         activeShopId = e.target.value;
         localStorage.setItem('af_active_shop_id', activeShopId);
+        localStorage.setItem('current_shop_id', activeShopId);
         const selectedShop = currentShops.find(s => s.id === activeShopId);
+        if (selectedShop) {
+          localStorage.setItem('current_shop_name', selectedShop.name);
+        }
         if (titleEl) {
           titleEl.textContent = selectedShop ? selectedShop.name.toUpperCase() : 'TOÀN BỘ CHI NHÁNH & ĐƠN HÀNG';
         }

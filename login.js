@@ -73,15 +73,23 @@
 
           if (typeof AuthService !== 'undefined') {
             const res = await AuthService.loginWithUsernameOrEmail(email, pass);
-            const userObj = { email: res.profile?.email || email, id: res.session?.user?.id || 'user' };
+            const userObj = { email: res.profile?.email || email, id: res.session?.user?.id || 'user', full_name: res.profile?.full_name || email.split('@')[0] };
             localStorage.setItem('af_logged_user', JSON.stringify(userObj));
             localStorage.setItem('profile', JSON.stringify(userObj));
 
-            const role = typeof AuthService.getUserRole === 'function' ? await AuthService.getUserRole() : 'SHOP_STAFF';
-            localStorage.setItem('current_role', role || 'SHOP_STAFF');
+            if (res.session?.access_token) {
+              localStorage.setItem('access_token', res.session.access_token);
+            }
+            if (res.session?.refresh_token) {
+              localStorage.setItem('refresh_token', res.session.refresh_token);
+            }
+
+            const role = typeof AuthService.getUserRole === 'function' ? await AuthService.getUserRole() : 'SHOP_OWNER';
+            localStorage.setItem('current_role', role || 'SHOP_OWNER');
             
             if (res.session && res.session.active_shop_id) {
               localStorage.setItem('current_shop_id', res.session.active_shop_id);
+              localStorage.setItem('af_active_shop_id', res.session.active_shop_id);
             }
 
             if (role === 'SYSTEM_ADMIN') {
