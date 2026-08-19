@@ -1,6 +1,7 @@
 /**
  * Shop Owner Command Center - app.js
  * 100% Real Supabase Data Integration & Realtime Sync Engine
+ * Replicating Exact Structure & Logic of Options Page (Đơn hàng đã lên đơn)
  */
 
 let sb = null;
@@ -11,6 +12,8 @@ let activeShopId = 'all';
 
 // State Data Collections
 let allSubmittedOrders = [];
+let filteredSubmittedOrders = [];
+let selectedSubmittedIds = new Set();
 let allDraftOrders = [];
 let allCustomers = [];
 let allBlacklist = [];
@@ -19,14 +22,13 @@ let allDevices = [];
 let currentQuota = { used: 0, limit: 1000, plan: 'STANDARD' };
 let currentShopConfig = {};
 
-// Filter & Pagination States
-let currentOrderTab = 'submitted'; // 'submitted' | 'draft'
-let ordersCurrentPage = 1;
-const ordersPerPage = 20;
+// Pagination States for Submitted Orders (Standard Option Page)
+let submittedPage = 1;
+let submittedPerPage = 20;
 let weeklyChartInstance = null;
 
 // =========================================================================
-// 1. INITIALIZATION & AUTH GUARD
+// 1. INITIALIZATION & STRICT AUTH GUARD
 // =========================================================================
 document.addEventListener('DOMContentLoaded', async () => {
   try {
@@ -38,17 +40,23 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     if (!sb) {
       console.error('Không thể khởi tạo Supabase client');
+      window.location.replace('login.html');
       return;
     }
 
-    // 1. Kiểm tra phiên đăng nhập
-    await checkAuthAndLoadProfile();
+    // 1. Kiểm tra phiên đăng nhập BẮT BUỘC
+    const isAuthed = await checkStrictAuth();
+    if (!isAuthed) {
+      window.location.replace('login.html');
+      return;
+    }
 
     // 2. Thiết lập UI Tabs & Tương tác
     initNavigationTabs();
     initThemeToggle();
     initModals();
     initEventHandlers();
+    initSubmittedOrdersControls();
     initPasswordMeter();
 
     // 3. Tải toàn bộ dữ liệu thực từ Supabase
@@ -59,10 +67,11 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   } catch (err) {
     console.error('Lỗi khởi tạo Dashboard:', err);
+    window.location.replace('login.html');
   }
 });
 
-async function checkAuthAndLoadProfile() {
+async function checkStrictAuth() {
   if (typeof AuthService !== 'undefined' && AuthService.getCurrentUser) {
     currentSession = await AuthService.getCurrentUser().catch(() => null);
   }
@@ -76,12 +85,17 @@ async function checkAuthAndLoadProfile() {
     currentSession = data?.session?.user || null;
   }
 
-  // Tải thông tin profile từ DB
-  if (currentSession && currentSession.id && sb) {
+  // Nếu không có phiên đăng nhập -> Chặn ngay lập tức
+  if (!currentSession || (!currentSession.id && !currentSession.email)) {
+    return false;
+  }
+
+  // Tải profile thật từ Supabase
+  if (currentSession.id && sb) {
     const { data: profile } = await sb.from('profiles').select('*').eq('id', currentSession.id).maybeSingle();
     currentProfile = profile || { email: currentSession.email, full_name: currentSession.email?.split('@')[0] };
   } else {
-    currentProfile = { email: 'owner@autofill.vn', full_name: 'Chủ Shop' };
+    currentProfile = { email: currentSession.email, full_name: currentSession.email?.split('@')[0] };
   }
 
   // Cập nhật Topbar UI
@@ -107,6 +121,8 @@ async function checkAuthAndLoadProfile() {
   if (sideAdminLink) {
     sideAdminLink.style.display = isSysAdmin ? 'block' : 'none';
   }
+
+  return true;
 }
 
 // =========================================================================
@@ -126,11 +142,14 @@ async function loadAllShopData() {
   // Aggregate Customers from both customers table AND all orders
   await aggregateCustomersData();
 
+  // Populate Filter Dropdowns for Submitted Orders Tab
+  populateSubmittedFiltersDropdowns();
+
   // Render UI
   renderDashboardKPIs();
   renderWeeklyOrdersChart();
   renderRecentOrdersStream();
-  renderOrdersTable();
+  filterSubmittedOrders(); // Lọc & render bảng Đơn hàng đã lên đơn
   renderCustomersTable();
   renderBlacklist();
   renderStaffTable();
@@ -187,15 +206,13 @@ async function fetchSubmittedOrders() {
         const phone = String(order.phone || '').replace(/\D/g, '');
         const name = (order.name || order.customer_name || '').trim().toLowerCase();
         const code = (order.order_code || '').trim().toLowerCase();
-        const timeKey = order.submitted_at ? new Date(order.submitted_at).toISOString().slice(0, 16) : 'notime'; // cùng phút
+        const timeKey = order.submitted_at ? new Date(order.submitted_at).toISOString().slice(0, 16) : 'notime';
 
-        // Khóa định danh đơn hàng
         const key = code && code !== '—' ? `code_${code}` : `np_${phone}_${name}_${timeKey}`;
 
         if (!uniqueMap.has(key)) {
           uniqueMap.set(key, { ...order });
         } else {
-          // Gộp thông tin: ưu tiên bản ghi có tracking_code
           const existing = uniqueMap.get(key);
           if (!existing.tracking_code && order.tracking_code) {
             existing.tracking_code = order.tracking_code;
@@ -205,6 +222,12 @@ async function fetchSubmittedOrders() {
           }
           if (!existing.cod_amount && order.cod_amount) {
             existing.cod_amount = order.cod_amount;
+          }
+          if (!existing.carrier_account && order.carrier_account) {
+            existing.carrier_account = order.carrier_account;
+          }
+          if (!existing.device_name && order.device_name) {
+            existing.device_name = order.device_name;
           }
         }
       }
@@ -248,7 +271,6 @@ async function aggregateCustomersData() {
 
   const customerMap = {};
 
-  // 1. Nạp từ bảng customers trong Supabase
   (dbCustomers || []).forEach(c => {
     const cleanPhone = String(c.phone || '').replace(/\D/g, '');
     if (!cleanPhone || cleanPhone.length < 8) return;
@@ -264,7 +286,6 @@ async function aggregateCustomersData() {
     };
   });
 
-  // 2. Trích xuất và cộng dồn từ toàn bộ submitted_orders
   (allSubmittedOrders || []).forEach(o => {
     const cleanPhone = String(o.phone || '').replace(/\D/g, '');
     if (!cleanPhone || cleanPhone.length < 8) return;
@@ -288,32 +309,9 @@ async function aggregateCustomersData() {
     if (o.name && o.name !== 'Khách hàng' && (!c.name || c.name === 'Khách hàng')) c.name = o.name;
     if (o.address && !c.address) c.address = o.address;
 
-    // Tự động phân hạng VIP
     if (c.total_orders >= 3 || c.total_cod >= 2000000) {
       if (c.segment !== 'Blacklist') c.segment = 'VIP';
     }
-  });
-
-  // 3. Trích xuất từ đơn nháp
-  (allDraftOrders || []).forEach(o => {
-    const cleanPhone = String(o.phone || '').replace(/\D/g, '');
-    if (!cleanPhone || cleanPhone.length < 8) return;
-
-    if (!customerMap[cleanPhone]) {
-      customerMap[cleanPhone] = {
-        phone: cleanPhone,
-        name: o.name || 'Khách hàng',
-        address: o.address || '',
-        total_orders: 0,
-        total_cod: 0,
-        segment: 'Thành viên',
-        notes: '',
-        tags: []
-      };
-    }
-    const c = customerMap[cleanPhone];
-    if (o.name && o.name !== 'Khách hàng' && (!c.name || c.name === 'Khách hàng')) c.name = o.name;
-    if (o.address && !c.address) c.address = o.address;
   });
 
   allCustomers = Object.values(customerMap);
@@ -357,13 +355,15 @@ async function fetchShopSettings() {
   }
 }
 
-// ─── 7. FETCH SHOP STAFF & PROFILES ─────────────────────────────────────
+// ─── 7. FETCH SHOP STAFF & PROFILES (100% REAL DB) ──────────────────────
 async function fetchShopStaff() {
   if (!sb) return;
   try {
-    const { data: members } = await sb
-      .from('shop_members')
-      .select('id, shop_id, user_id, role, status, created_at');
+    let query = sb.from('shop_members').select('id, shop_id, user_id, role, status, created_at');
+    if (activeShopId && activeShopId !== 'all') {
+      query = query.eq('shop_id', activeShopId);
+    }
+    const { data: members } = await query;
 
     if (!members || members.length === 0) {
       allStaffMembers = [];
@@ -390,26 +390,9 @@ async function fetchShopDevices() {
   if (!sb) return;
   try {
     const { data } = await sb.from('shop_devices').select('*').order('last_active_at', { ascending: false });
-    if (data && data.length > 0) {
-      allDevices = data;
-    } else {
-      // Auto register current active session device
-      allDevices = [{
-        id: 'dev-curr',
-        device_name: 'Chrome Extension / Web Browser',
-        ip_address: '127.0.0.1 (Current Session)',
-        last_active_at: new Date().toISOString(),
-        status: 'online'
-      }];
-    }
+    allDevices = data || [];
   } catch (err) {
-    allDevices = [{
-      id: 'dev-curr',
-      device_name: 'Chrome Extension / Web Browser',
-      ip_address: '127.0.0.1 (Current Session)',
-      last_active_at: new Date().toISOString(),
-      status: 'online'
-    }];
+    allDevices = [];
   }
 }
 
@@ -418,10 +401,11 @@ async function fetchShopDevices() {
 // =========================================================================
 
 function filterAndRenderAll() {
+  populateSubmittedFiltersDropdowns();
   renderDashboardKPIs();
   renderWeeklyOrdersChart();
   renderRecentOrdersStream();
-  renderOrdersTable();
+  filterSubmittedOrders();
   renderCustomersTable();
   renderBlacklist();
   renderStaffTable();
@@ -438,12 +422,10 @@ function renderDashboardKPIs() {
     drafts = drafts.filter(o => o.shop_id === activeShopId || !o.shop_id);
   }
 
-  // 1. Tổng đơn đã lên bưu điện
   const totalSubmitted = submitted.length;
   const kpiTotalSubmitted = document.getElementById('kpiTotalSubmittedOrders');
   if (kpiTotalSubmitted) kpiTotalSubmitted.textContent = totalSubmitted.toLocaleString('vi-VN');
 
-  // Đơn hôm nay
   const todayStr = new Date().toISOString().split('T')[0];
   const todayOrders = submitted.filter(o => {
     const d = o.submitted_at ? new Date(o.submitted_at).toISOString().split('T')[0] : '';
@@ -452,7 +434,6 @@ function renderDashboardKPIs() {
   const kpiToday = document.getElementById('kpiOrdersToday');
   if (kpiToday) kpiToday.textContent = `Hôm nay: ${todayOrders.length} đơn`;
 
-  // 2. Tổng COD
   const totalCod = submitted.reduce((sum, o) => sum + (Number(o.cod_amount) || 0), 0);
   const todayCod = todayOrders.reduce((sum, o) => sum + (Number(o.cod_amount) || 0), 0);
   const kpiCod = document.getElementById('kpiTotalCod');
@@ -460,18 +441,15 @@ function renderDashboardKPIs() {
   const kpiCodTodayEl = document.getElementById('kpiCodToday');
   if (kpiCodTodayEl) kpiCodTodayEl.textContent = `Hôm nay: ${formatCurrency(todayCod)}`;
 
-  // 3. Đơn nháp
   const kpiDraft = document.getElementById('kpiDraftOrders');
   if (kpiDraft) kpiDraft.textContent = drafts.length.toLocaleString('vi-VN');
 
-  // 4. AI Quota
   const kpiAi = document.getElementById('kpiAiQuota');
   if (kpiAi) kpiAi.textContent = `${currentQuota.used} / ${currentQuota.limit}`;
   const pct = Math.min(100, Math.round((currentQuota.used / Math.max(1, currentQuota.limit)) * 100));
   const kpiAiPct = document.getElementById('kpiAiQuotaPercent');
   if (kpiAiPct) kpiAiPct.textContent = `Đã sử dụng ${pct}%`;
 
-  // 5. Tỷ trọng bưu cục
   const vnpostOrders = submitted.filter(o => (o.platform || '').toLowerCase().includes('vnpost') || (o.carrier || '').toLowerCase().includes('vnpost'));
   const jtOrders = submitted.filter(o => (o.platform || '').toLowerCase().includes('jt') || (o.carrier || '').toLowerCase().includes('jt'));
 
@@ -596,118 +574,319 @@ function renderRecentOrdersStream() {
   }).join('');
 }
 
-// ─── 4. RENDER ORDERS TAB TABLE WITH FULL FILTERS ───────────────────────
-function renderOrdersTable() {
-  const tbody = document.getElementById('tbodyOrdersList');
-  const countSubmitted = document.getElementById('countSubmittedTab');
-  const countDrafts = document.getElementById('countDraftsTab');
-  const paginationInfo = document.getElementById('ordersPaginationInfo');
-  const btnPrev = document.getElementById('btnPrevOrdersPage');
-  const btnNext = document.getElementById('btnNextOrdersPage');
+// ─── 4. SUBMITTED ORDERS TAB (100% MATCHING OPTIONS PAGE) ───────────────
+function populateSubmittedFiltersDropdowns() {
+  const filterAccount = document.getElementById('submittedFilterAccount');
+  const filterDevice = document.getElementById('submittedFilterDevice');
 
-  if (countSubmitted) countSubmitted.textContent = allSubmittedOrders.length;
-  if (countDrafts) countDrafts.textContent = allDraftOrders.length;
+  if (filterAccount) {
+    const accounts = Array.from(new Set(allSubmittedOrders.map(o => {
+      let acc = o.carrier_account || o.carrierAccount;
+      if (!acc) {
+        const match = (o.name || '').match(/\((?:acc|tài khoản|tk)?\s*([^\)]+)\)/i);
+        if (match) acc = match[1].trim();
+      }
+      return acc || '';
+    }).filter(Boolean)));
 
-  if (!tbody) return;
+    const currentVal = filterAccount.value;
+    filterAccount.innerHTML = '<option value="">-- Tất Cả Tài Khoản Bưu Điện / J&T --</option>' + 
+      accounts.map(a => `<option value="${a}">${a}</option>`).join('');
+    if (accounts.includes(currentVal)) filterAccount.value = currentVal;
+  }
 
-  // Lấy dữ liệu theo tab con
-  let list = currentOrderTab === 'submitted' ? [...allSubmittedOrders] : [...allDraftOrders];
+  if (filterDevice) {
+    const devices = Array.from(new Set(allSubmittedOrders.map(o => o.device_name || o.deviceName).filter(Boolean)));
+    const currentVal = filterDevice.value;
+    filterDevice.innerHTML = '<option value="">-- Tất Cả Máy --</option>' + 
+      devices.map(d => `<option value="${d}">${d}</option>`).join('');
+    if (devices.includes(currentVal)) filterDevice.value = currentVal;
+  }
+}
 
-  // Lọc theo shop
+function initSubmittedOrdersControls() {
+  const searchInp = document.getElementById('submittedSearchInp');
+  const searchClear = document.getElementById('submittedSearchClear');
+  const filterPlatform = document.getElementById('submittedFilterPlatform');
+  const filterAccount = document.getElementById('submittedFilterAccount');
+  const filterDevice = document.getElementById('submittedFilterDevice');
+  const filterFrom = document.getElementById('submittedFilterFrom');
+  const filterTo = document.getElementById('submittedFilterTo');
+
+  const btnToday = document.getElementById('submittedBtnToday');
+  const btn7Days = document.getElementById('submittedBtn7Days');
+  const btn30Days = document.getElementById('submittedBtn30Days');
+  const btnThisMonth = document.getElementById('submittedBtnThisMonth');
+  const btnClearFilters = document.getElementById('submittedBtnClearFilters');
+
+  const perPageEl = document.getElementById('submittedPerPage');
+  const prevBtn = document.getElementById('submittedPrevBtn');
+  const nextBtn = document.getElementById('submittedNextBtn');
+  const selectAll = document.getElementById('submittedSelectAll');
+
+  // Input & Change Events
+  searchInp?.addEventListener('input', () => {
+    if (searchClear) searchClear.style.display = searchInp.value ? 'block' : 'none';
+    submittedPage = 1;
+    filterSubmittedOrders();
+  });
+
+  searchClear?.addEventListener('click', () => {
+    if (searchInp) searchInp.value = '';
+    searchClear.style.display = 'none';
+    submittedPage = 1;
+    filterSubmittedOrders();
+  });
+
+  filterPlatform?.addEventListener('change', () => { submittedPage = 1; filterSubmittedOrders(); });
+  filterAccount?.addEventListener('change', () => { submittedPage = 1; filterSubmittedOrders(); });
+  filterDevice?.addEventListener('change', () => { submittedPage = 1; filterSubmittedOrders(); });
+  filterFrom?.addEventListener('change', () => { submittedPage = 1; filterSubmittedOrders(); });
+  filterTo?.addEventListener('change', () => { submittedPage = 1; filterSubmittedOrders(); });
+
+  // Quick Date Range Buttons
+  btnToday?.addEventListener('click', () => {
+    const today = new Date().toISOString().split('T')[0];
+    if (filterFrom) filterFrom.value = today;
+    if (filterTo) filterTo.value = today;
+    submittedPage = 1;
+    filterSubmittedOrders();
+  });
+
+  btn7Days?.addEventListener('click', () => {
+    const now = new Date();
+    const past = new Date(); past.setDate(now.getDate() - 7);
+    if (filterFrom) filterFrom.value = past.toISOString().split('T')[0];
+    if (filterTo) filterTo.value = now.toISOString().split('T')[0];
+    submittedPage = 1;
+    filterSubmittedOrders();
+  });
+
+  btn30Days?.addEventListener('click', () => {
+    const now = new Date();
+    const past = new Date(); past.setDate(now.getDate() - 30);
+    if (filterFrom) filterFrom.value = past.toISOString().split('T')[0];
+    if (filterTo) filterTo.value = now.toISOString().split('T')[0];
+    submittedPage = 1;
+    filterSubmittedOrders();
+  });
+
+  btnThisMonth?.addEventListener('click', () => {
+    const now = new Date();
+    const firstDay = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0];
+    const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().split('T')[0];
+    if (filterFrom) filterFrom.value = firstDay;
+    if (filterTo) filterTo.value = lastDay;
+    submittedPage = 1;
+    filterSubmittedOrders();
+  });
+
+  btnClearFilters?.addEventListener('click', () => {
+    if (searchInp) searchInp.value = '';
+    if (searchClear) searchClear.style.display = 'none';
+    if (filterPlatform) filterPlatform.value = '';
+    if (filterAccount) filterAccount.value = '';
+    if (filterDevice) filterDevice.value = '';
+    if (filterFrom) filterFrom.value = '';
+    if (filterTo) filterTo.value = '';
+    submittedPage = 1;
+    filterSubmittedOrders();
+  });
+
+  perPageEl?.addEventListener('change', (e) => {
+    submittedPerPage = parseInt(e.target.value, 10) || 20;
+    submittedPage = 1;
+    renderSubmittedOrdersList();
+  });
+
+  prevBtn?.addEventListener('click', () => {
+    if (submittedPage > 1) {
+      submittedPage--;
+      renderSubmittedOrdersList();
+    }
+  });
+
+  nextBtn?.addEventListener('click', () => {
+    const totalPages = Math.ceil(filteredSubmittedOrders.length / submittedPerPage) || 1;
+    if (submittedPage < totalPages) {
+      submittedPage++;
+      renderSubmittedOrdersList();
+    }
+  });
+
+  selectAll?.addEventListener('change', (e) => {
+    const isChecked = e.target.checked;
+    document.querySelectorAll('.sub-checkbox').forEach(cb => {
+      cb.checked = isChecked;
+      if (isChecked) selectedSubmittedIds.add(cb.value);
+      else selectedSubmittedIds.delete(cb.value);
+    });
+  });
+}
+
+function filterSubmittedOrders() {
+  const query = (document.getElementById('submittedSearchInp')?.value || '').trim().toLowerCase();
+  const platform = (document.getElementById('submittedFilterPlatform')?.value || '').trim().toLowerCase();
+  const account = (document.getElementById('submittedFilterAccount')?.value || '').trim().toLowerCase();
+  const device = (document.getElementById('submittedFilterDevice')?.value || '').trim().toLowerCase();
+  const fromDate = document.getElementById('submittedFilterFrom')?.value || '';
+  const toDate = document.getElementById('submittedFilterTo')?.value || '';
+
+  let list = [...allSubmittedOrders];
+
   if (activeShopId && activeShopId !== 'all') {
     list = list.filter(o => o.shop_id === activeShopId || !o.shop_id);
   }
 
-  // 1. Search Query
-  const searchTxt = (document.getElementById('txtSearchOrders')?.value || '').toLowerCase().trim();
-  if (searchTxt) {
-    list = list.filter(o =>
-      (o.name && o.name.toLowerCase().includes(searchTxt)) ||
-      (o.phone && o.phone.includes(searchTxt)) ||
-      (o.order_code && o.order_code.toLowerCase().includes(searchTxt)) ||
-      (o.tracking_code && o.tracking_code.toLowerCase().includes(searchTxt)) ||
-      (o.address && o.address.toLowerCase().includes(searchTxt))
-    );
-  }
+  filteredSubmittedOrders = list.filter(o => {
+    if (!o) return false;
 
-  // 2. Carrier Filter
-  const carrier = document.getElementById('filterCarrierSelect')?.value || 'all';
-  if (carrier !== 'all') {
-    list = list.filter(o => {
+    if (query) {
+      const cleanDigits = query.replace(/\D/g, '');
+      const matchName = (o.name || o.customer_name || '').toLowerCase().includes(query);
+      const matchAddress = (o.address || '').toLowerCase().includes(query);
+      const matchCode = (o.order_code || o.orderCode || '').toLowerCase().includes(query);
+      const matchTracking = (o.tracking_code || o.trackingCode || '').toLowerCase().includes(query);
+      const matchAcc = (o.carrier_account || o.carrierAccount || '').toLowerCase().includes(query);
+      const matchPhone = cleanDigits.length >= 2 ? (o.phone || '').replace(/\D/g, '').includes(cleanDigits) : (o.phone || '').toLowerCase().includes(query);
+      if (!matchName && !matchAddress && !matchCode && !matchTracking && !matchPhone && !matchAcc) return false;
+    }
+
+    if (platform) {
       const p = (o.platform || o.carrier || '').toLowerCase();
-      return p.includes(carrier);
-    });
-  }
+      if (!p.includes(platform)) return false;
+    }
 
-  // 3. Date Filter (Default ALL TIME)
-  const dateFilter = document.getElementById('filterDateSelect')?.value || 'all';
-  if (dateFilter !== 'all') {
-    const now = new Date();
-    list = list.filter(o => {
-      const dStr = o.submitted_at || o.created_at;
-      if (!dStr) return true;
-      const d = new Date(dStr);
-      if (dateFilter === 'today') {
-        return d.toISOString().split('T')[0] === now.toISOString().split('T')[0];
+    if (account) {
+      let cAcc = (o.carrier_account || o.carrierAccount || '').toLowerCase();
+      if (!cAcc) {
+        const match = (o.name || '').match(/\((?:acc|tài khoản|tk)?\s*([^\)]+)\)/i);
+        if (match) cAcc = match[1].trim().toLowerCase();
       }
-      if (dateFilter === '7days') {
-        return (now - d) <= (7 * 24 * 60 * 60 * 1000);
+      if (!cAcc.includes(account)) return false;
+    }
+
+    if (device) {
+      const dev = (o.device_name || o.deviceName || '').toLowerCase();
+      if (!dev.includes(device)) return false;
+    }
+
+    if (fromDate || toDate) {
+      const orderDateStr = o.submitted_date || (o.submitted_at ? o.submitted_at.substring(0, 10) : '');
+      if (orderDateStr) {
+        if (fromDate && orderDateStr < fromDate) return false;
+        if (toDate && orderDateStr > toDate) return false;
       }
-      if (dateFilter === '30days') {
-        return (now - d) <= (30 * 24 * 60 * 60 * 1000);
-      }
-      return true;
-    });
-  }
+    }
 
-  const totalFiltered = list.length;
-  const totalPages = Math.max(1, Math.ceil(totalFiltered / ordersPerPage));
-  if (ordersCurrentPage > totalPages) ordersCurrentPage = totalPages;
+    return true;
+  });
 
-  const startIdx = (ordersCurrentPage - 1) * ordersPerPage;
-  const pageItems = list.slice(startIdx, startIdx + ordersPerPage);
+  // Cập nhật 2 Stat Cards tổng quan chuẩn Option
+  let totalCod = 0;
+  filteredSubmittedOrders.forEach(o => {
+    totalCod += Number(o.cod_amount || o.codAmount || 0);
+  });
 
-  if (paginationInfo) {
-    paginationInfo.textContent = `Hiển thị ${pageItems.length}/${totalFiltered} đơn hàng (Trang ${ordersCurrentPage}/${totalPages})`;
-  }
-  if (btnPrev) btnPrev.disabled = (ordersCurrentPage <= 1);
-  if (btnNext) btnNext.disabled = (ordersCurrentPage >= totalPages);
+  const statTotal = document.getElementById('stat-submitted-total');
+  const statCod = document.getElementById('stat-submitted-cod');
+  if (statTotal) statTotal.textContent = filteredSubmittedOrders.length.toLocaleString('vi-VN');
+  if (statCod) statCod.textContent = formatCurrency(totalCod);
 
-  if (pageItems.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="9" style="text-align:center; padding:30px; color:var(--text-s);">Không tìm thấy đơn hàng nào phù hợp với bộ lọc.</td></tr>';
+  renderSubmittedOrdersList();
+}
+
+function renderSubmittedOrdersList() {
+  const tbody = document.getElementById('submittedList');
+  const pageInfo = document.getElementById('submittedPageInfo');
+  const totalLabel = document.getElementById('submittedTotalLabel');
+  const prevBtn = document.getElementById('submittedPrevBtn');
+  const nextBtn = document.getElementById('submittedNextBtn');
+
+  if (!tbody) return;
+
+  const totalFiltered = filteredSubmittedOrders.length;
+  const totalPages = Math.max(1, Math.ceil(totalFiltered / submittedPerPage));
+  if (submittedPage > totalPages) submittedPage = totalPages;
+
+  if (pageInfo) pageInfo.textContent = `Trang ${submittedPage} / ${totalPages}`;
+  if (totalLabel) totalLabel.textContent = `(${totalFiltered} đơn)`;
+  if (prevBtn) prevBtn.disabled = (submittedPage <= 1);
+  if (nextBtn) nextBtn.disabled = (submittedPage >= totalPages);
+
+  if (totalFiltered === 0) {
+    tbody.innerHTML = '<tr><td colspan="12" style="text-align:center; padding:30px; color:var(--text-s);">Không tìm thấy đơn hàng nào phù hợp với bộ lọc.</td></tr>';
     return;
   }
 
-  tbody.innerHTML = pageItems.map(o => {
-    const isVnpost = (o.platform || '').toLowerCase().includes('vnpost') || (o.carrier || '').toLowerCase().includes('vnpost');
-    const badgeClass = isVnpost ? 'badge-vnpost' : 'badge-jt';
-    const carrierName = isVnpost ? 'VNPost' : 'J&T Express';
-    const timeFormatted = (o.submitted_at || o.created_at) ? new Date(o.submitted_at || o.created_at).toLocaleString('vi-VN') : '--';
+  const startIdx = (submittedPage - 1) * submittedPerPage;
+  const pageOrders = filteredSubmittedOrders.slice(startIdx, startIdx + submittedPerPage);
+
+  tbody.innerHTML = pageOrders.map(o => {
+    const isChecked = selectedSubmittedIds.has(o.id) ? 'checked' : '';
+    const pStr = (o.platform || o.carrier || '').toLowerCase();
+    const isJt = pStr.includes('jt');
+    const platformLabel = isJt ? 'J&T Express' : 'VNPost';
+    const platformClass = isJt ? 'badge-jt' : 'badge-vnpost';
+    const codText = formatCurrency(o.cod_amount || o.codAmount);
+
+    const trackingHtml = (o.tracking_code || o.trackingCode)
+      ? `<span class="badge" style="background:#ECFDF5; color:#059669; border:1px solid #A7F3D0; font-family:monospace; font-weight:800; font-size:11.5px; padding:3px 6px;">${escapeHtml(o.tracking_code || o.trackingCode)}</span>`
+      : `<span style="color:var(--text-s); font-size:11px;">Chờ cấp mã</span>`;
+
+    const sourceBadge = `<span class="badge" style="background:#ECFDF5; color:#059669; border:1px solid #A7F3D0; font-size:10px; padding:2px 6px; border-radius:4px;">☁️ Cloud</span>`;
+
+    const dateDisplay = (o.submitted_at || o.submittedAt)
+      ? new Date(o.submitted_at || o.submittedAt).toLocaleString('vi-VN')
+      : (o.submitted_date || '--');
+
+    let accDisplay = o.carrier_account || o.carrierAccount || '';
+    if (!accDisplay) {
+      const match = (o.name || '').match(/\((?:acc|tài khoản|tk)?\s*([^\)]+)\)/i);
+      if (match) accDisplay = match[1].trim();
+    }
 
     return `
-      <tr>
-        <td><input type="checkbox" class="chk-order-row" data-id="${o.id}"></td>
+      <tr data-id="${o.id}">
+        <td style="text-align:center;"><input type="checkbox" class="sub-checkbox" value="${o.id}" ${isChecked}></td>
         <td>
-          <div style="font-weight:800; color:var(--primary); font-size:13px;">${escapeHtml(o.tracking_code || o.order_code || 'AF-' + (o.id || '').slice(0, 6))}</div>
-          ${o.order_code && o.order_code !== o.tracking_code ? `<div style="font-size:11px; color:var(--text-s); font-weight:600;"><i class="ph ph-tag"></i> Mã đơn: ${escapeHtml(o.order_code)}</div>` : ''}
+          <div style="font-weight:700; color:var(--text);">${escapeHtml(o.name || o.customer_name || 'Khách hàng')}</div>
+          <div style="font-size:12px; color:var(--primary); font-family:monospace; font-weight:700;">${escapeHtml(o.phone || '—')}</div>
+        </td>
+        <td style="max-width:240px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="${escapeHtml(o.address)}">${escapeHtml(o.address || '—')}</td>
+        <td>
+          <div style="font-family:monospace; font-size:12px; font-weight:700; color:#475569;">${escapeHtml(o.order_code || o.orderCode || '—')}</div>
+        </td>
+        <td>${trackingHtml}</td>
+        <td style="text-align:right; font-weight:800; color:#10B981;">${codText}</td>
+        <td style="text-align:center;">${o.collect_fee || o.collectFee ? '<span style="color:#2563EB; font-weight:700;">Có</span>' : '<span style="color:#94A3B8;">Không</span>'}</td>
+        <td><span class="${platformClass}">${platformLabel}</span></td>
+        <td>
+          ${accDisplay 
+            ? `<span class="badge" style="background:#EFF6FF; color:#1D4ED8; border:1px solid #BFDBFE; font-weight:700; font-size:11.5px; padding:3px 8px; border-radius:6px;">🏢 ${escapeHtml(accDisplay)}</span>` 
+            : `<span style="color:var(--text-s); font-size:11.5px;">—</span>`}
         </td>
         <td>
-          <div style="font-weight:700;">${escapeHtml(o.name || o.customer_name || 'Khách hàng')}</div>
+          <div>${sourceBadge}</div>
+          <div style="font-size:11px; color:var(--text-s); margin-top:2px;">${escapeHtml(o.device_name || o.deviceName || 'Máy chính')}</div>
         </td>
-        <td><code>${escapeHtml(o.phone || '--')}</code></td>
-        <td style="max-width:250px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;" title="${escapeHtml(o.address)}">${escapeHtml(o.address || '--')}</td>
-        <td><strong style="color:#10B981;">${formatCurrency(o.cod_amount)}</strong></td>
-        <td><span class="${badgeClass}">${carrierName}</span></td>
-        <td style="font-size:11px; color:var(--text-s);">${timeFormatted}</td>
-        <td>
-          <div style="display:flex; gap:4px;">
+        <td style="font-size:11px; color:var(--text-s);">${dateDisplay}</td>
+        <td style="text-align:center;">
+          <div style="display:flex; justify-content:center; gap:4px;">
             <button class="btn btn-secondary btn-sm" onclick="copyOrderInfo('${escapeHtml(o.phone)}', '${escapeHtml(o.name)}', '${escapeHtml(o.address)}')" title="Sao chép"><i class="ph ph-copy"></i></button>
-            <button class="btn btn-secondary btn-sm" style="color:#EF4444;" onclick="deleteOrderRecord('${o.id}', '${currentOrderTab}')" title="Xóa"><i class="ph ph-trash"></i></button>
+            <button class="btn btn-secondary btn-sm" style="color:#EF4444;" onclick="deleteOrderRecord('${o.id}', 'submitted')" title="Xóa"><i class="ph ph-trash"></i></button>
           </div>
         </td>
       </tr>
     `;
   }).join('');
+
+  document.querySelectorAll('.sub-checkbox').forEach(cb => {
+    cb.addEventListener('change', (e) => {
+      if (e.target.checked) selectedSubmittedIds.add(e.target.value);
+      else selectedSubmittedIds.delete(e.target.value);
+    });
+  });
 }
 
 // ─── 5. RENDER CUSTOMERS & BLACKLIST ────────────────────────────────────
@@ -728,7 +907,7 @@ function renderCustomersTable() {
   }
 
   if (list.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center; padding:20px; color:var(--text-s);">Chưa có dữ liệu khách hàng.</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center; padding:20px; color:var(--text-s);">Chưa có dữ liệu khách hàng trong Database.</td></tr>';
     return;
   }
 
@@ -774,23 +953,13 @@ function renderBlacklist() {
   `).join('');
 }
 
-// ─── 6. RENDER STAFF TABLE ──────────────────────────────────────────────
+// ─── 6. RENDER STAFF TABLE (100% REAL DB DATA ONLY) ─────────────────────
 function renderStaffTable() {
   const tbody = document.getElementById('tbodyStaffList');
   if (!tbody) return;
 
   if (allStaffMembers.length === 0) {
-    tbody.innerHTML = `
-      <tr>
-        <td><strong>${escapeHtml(currentProfile.full_name || 'Chủ Shop')}</strong></td>
-        <td><code>${escapeHtml(currentProfile.email || 'owner@shop.vn')}</code></td>
-        <td>${escapeHtml(currentProfile.phone || '--')}</td>
-        <td><span class="owner-badge">CHỦ SHOP (OWNER)</span></td>
-        <td>${new Date().toLocaleDateString('vi-VN')}</td>
-        <td><span class="status-online">Đang hoạt động</span></td>
-        <td><span style="font-size:11px; color:var(--text-s);">Tài khoản chính</span></td>
-      </tr>
-    `;
+    tbody.innerHTML = `<tr><td colspan="7" style="text-align:center; padding:30px; color:var(--text-s);">Chưa có nhân viên nào được gán vào Shop này trong Database. Bấm nút phía trên để cấp tài khoản.</td></tr>`;
     return;
   }
 
@@ -860,6 +1029,11 @@ function renderDevicesTable() {
   const tbody = document.getElementById('tbodyDevicesList');
   if (!tbody) return;
 
+  if (allDevices.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="5" style="text-align:center; padding:20px; color:var(--text-s);">Chưa có thiết bị nào kích hoạt Extension của shop.</td></tr>';
+    return;
+  }
+
   tbody.innerHTML = allDevices.map(d => `
     <tr>
       <td><strong><i class="ph ph-laptop"></i> ${escapeHtml(d.device_name || 'Chrome Extension')}</strong></td>
@@ -898,21 +1072,19 @@ function setupRealtimeSubscriptions() {
 
   try {
     sb.channel('realtime_shop_orders')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'submitted_orders' }, async (payload) => {
-        console.log('Realtime submitted_orders event:', payload);
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'submitted_orders' }, async () => {
         await fetchSubmittedOrders();
         await aggregateCustomersData();
+        populateSubmittedFiltersDropdowns();
         renderDashboardKPIs();
         renderWeeklyOrdersChart();
         renderRecentOrdersStream();
-        renderOrdersTable();
+        filterSubmittedOrders();
         renderCustomersTable();
       })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, async (payload) => {
-        console.log('Realtime draft orders event:', payload);
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, async () => {
         await fetchDraftOrders();
         renderDashboardKPIs();
-        renderOrdersTable();
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'customers' }, async () => {
         await aggregateCustomersData();
@@ -946,39 +1118,6 @@ function initNavigationTabs() {
 }
 
 function initEventHandlers() {
-  // Sub-tabs: Submitted vs Draft Orders
-  const btnSub = document.getElementById('subtabSubmittedOrders');
-  const btnDraft = document.getElementById('subtabDraftOrders');
-
-  btnSub?.addEventListener('click', () => {
-    currentOrderTab = 'submitted';
-    btnSub.className = 'btn btn-sm btn-primary';
-    btnDraft.className = 'btn btn-sm btn-secondary';
-    ordersCurrentPage = 1;
-    renderOrdersTable();
-  });
-
-  btnDraft?.addEventListener('click', () => {
-    currentOrderTab = 'draft';
-    btnDraft.className = 'btn btn-sm btn-primary';
-    btnSub.className = 'btn btn-sm btn-secondary';
-    ordersCurrentPage = 1;
-    renderOrdersTable();
-  });
-
-  // Filter inputs on orders tab
-  document.getElementById('txtSearchOrders')?.addEventListener('input', () => { ordersCurrentPage = 1; renderOrdersTable(); });
-  document.getElementById('filterCarrierSelect')?.addEventListener('change', () => { ordersCurrentPage = 1; renderOrdersTable(); });
-  document.getElementById('filterDateSelect')?.addEventListener('change', () => { ordersCurrentPage = 1; renderOrdersTable(); });
-
-  // Pagination
-  document.getElementById('btnPrevOrdersPage')?.addEventListener('click', () => {
-    if (ordersCurrentPage > 1) { ordersCurrentPage--; renderOrdersTable(); }
-  });
-  document.getElementById('btnNextOrdersPage')?.addEventListener('click', () => {
-    ordersCurrentPage++; renderOrdersTable();
-  });
-
   // Search on Customers tab
   document.getElementById('txtSearchCustomers')?.addEventListener('input', renderCustomersTable);
 
@@ -1000,7 +1139,7 @@ function initEventHandlers() {
       } else if (sb) {
         await sb.auth.signOut();
       }
-      window.location.href = 'login.html';
+      window.location.replace('login.html');
     }
   });
 
@@ -1054,11 +1193,9 @@ Người nhận: Trần Hải Đăng - SĐT: 0918.776.889. Tiền COD thu 850k n
     const raw = document.getElementById('txtRawOrderInput')?.value || '';
     if (!raw.trim()) return alert('Vui lòng nhập đoạn chat đơn hàng!');
 
-    // Phone parsing
     const phoneMatch = raw.match(/(0[3|5|7|8|9][0-9]{8}|0[3|5|7|8|9][0-9]{1}[\.\s][0-9]{3}[\.\s][0-9]{4})/);
     const phone = phoneMatch ? phoneMatch[0].replace(/[\.\s]/g, '') : '0918776889';
 
-    // COD parsing
     const codMatch = raw.match(/(\d+[\.,]?\d*)\s*(k|nghìn|ngàn|đ|vnd|triệu)/i) || raw.match(/thu\s*(hộ)?\s*(\d+)/i);
     let cod = 850000;
     if (codMatch) {
@@ -1067,13 +1204,11 @@ Người nhận: Trần Hải Đăng - SĐT: 0918.776.889. Tiền COD thu 850k n
       else cod = num;
     }
 
-    // Name parsing
     let name = 'Khách Mới';
     const nameMatch = raw.match(/(?:người nhận|tên|khách|anh|chị|bạn|a\/c)\s*[:\-\s]\s*([^\n,–\.]+)/i);
     if (nameMatch) name = nameMatch[1].trim();
     else if (raw.includes('Trần Hải Đăng')) name = 'Trần Hải Đăng';
 
-    // Address parsing
     let address = '45/2 Nguyễn Thị Minh Khai, Phường Bến Nghé, Quận 1, TP. Hồ Chí Minh';
     const addrMatch = raw.match(/(?:địa chỉ|đc|gửi về|về)\s*[:\-\s]\s*([^\n]+)/i);
     if (addrMatch) address = addrMatch[1].trim();
@@ -1114,7 +1249,6 @@ Người nhận: Trần Hải Đăng - SĐT: 0918.776.889. Tiền COD thu 850k n
       alert('Đã lưu đơn nháp thành công vào Supabase!');
       await fetchDraftOrders();
       renderDashboardKPIs();
-      renderOrdersTable();
     } catch (err) {
       alert('Lỗi lưu đơn: ' + err.message);
     }
@@ -1145,10 +1279,11 @@ Người nhận: Trần Hải Đăng - SĐT: 0918.776.889. Tiền COD thu 850k n
       alert('Đã đẩy đơn thành công vào Supabase!');
       await fetchSubmittedOrders();
       await aggregateCustomersData();
+      populateSubmittedFiltersDropdowns();
       renderDashboardKPIs();
       renderWeeklyOrdersChart();
       renderRecentOrdersStream();
-      renderOrdersTable();
+      filterSubmittedOrders();
       renderCustomersTable();
     } catch (err) {
       alert('Lỗi lưu đơn: ' + err.message);
@@ -1157,17 +1292,18 @@ Người nhận: Trần Hải Đăng - SĐT: 0918.776.889. Tiền COD thu 850k n
 
   // Export Orders CSV
   document.getElementById('btnExportOrdersCsv')?.addEventListener('click', () => {
-    const data = allSubmittedOrders.map(o => ({
-      'Mã Đơn': o.order_code || '',
-      'Vận Đơn': o.tracking_code || '',
-      'Tên Khách': o.name || '',
+    const data = filteredSubmittedOrders.map(o => ({
+      'Mã Đơn': o.order_code || o.orderCode || '',
+      'Vận Đơn': o.tracking_code || o.trackingCode || '',
+      'Tên Khách': o.name || o.customer_name || '',
       'SĐT': o.phone || '',
       'Địa Chỉ': o.address || '',
-      'Tiền COD': o.cod_amount || 0,
+      'Tiền COD': o.cod_amount || o.codAmount || 0,
       'Bưu Cục': o.platform || 'VNPost',
-      'Thời Gian': o.submitted_at || ''
+      'Tài Khoản': o.carrier_account || o.carrierAccount || '',
+      'Thời Gian': o.submitted_at || o.submittedAt || ''
     }));
-    downloadCsv(data, `Don_Hang_${new Date().toISOString().split('T')[0]}.csv`);
+    downloadCsv(data, `Don_Hang_Da_Len_${new Date().toISOString().split('T')[0]}.csv`);
   });
 
   // Export Customers CSV
@@ -1200,7 +1336,6 @@ function closeModalEl(el) {
 }
 
 function initModals() {
-  // Add Staff Modal
   const modalStaff = document.getElementById('modalAddStaff');
   document.getElementById('btnOpenAddStaffModal')?.addEventListener('click', () => openModalEl(modalStaff));
   document.getElementById('btnCloseAddStaffModal')?.addEventListener('click', () => closeModalEl(modalStaff));
@@ -1216,13 +1351,11 @@ function initModals() {
 
     try {
       if (sb) {
-        // 1. Check existing profile or create
         let userId = null;
         const { data: existing } = await sb.from('profiles').select('id').eq('email', ident).maybeSingle();
         if (existing) {
           userId = existing.id;
         } else {
-          // Tạo user mới qua auth hoặc profile
           userId = 'usr_' + Date.now().toString(36);
           await sb.from('profiles').insert({
             id: userId,
@@ -1232,7 +1365,6 @@ function initModals() {
           });
         }
 
-        // 2. Gán vào Shop
         await sb.from('shop_members').insert({
           shop_id: activeShopId !== 'all' ? activeShopId : (currentShops[0]?.id || null),
           user_id: userId,
@@ -1253,7 +1385,6 @@ function initModals() {
     }
   });
 
-  // Add Blacklist Modal
   const modalBlacklist = document.getElementById('modalAddBlacklist');
   document.getElementById('btnAddBlacklistModalBtn')?.addEventListener('click', () => openModalEl(modalBlacklist));
   document.getElementById('btnCloseBlacklistModal')?.addEventListener('click', () => closeModalEl(modalBlacklist));
@@ -1288,7 +1419,6 @@ function initModals() {
     }
   });
 
-  // Invite Code Generator
   document.getElementById('btnGenerateInviteCode')?.addEventListener('click', () => {
     const code = 'INV-' + (activeShopId !== 'all' ? activeShopId.slice(0, 4) : 'SHOP') + '-' + Math.random().toString(36).substring(2, 7).toUpperCase();
     const txt = document.getElementById('txtShopInviteCode');
@@ -1404,8 +1534,8 @@ window.deleteOrderRecord = async function(id, type) {
     }
     if (type === 'submitted') await fetchSubmittedOrders();
     else await fetchDraftOrders();
+    filterSubmittedOrders();
     renderDashboardKPIs();
-    renderOrdersTable();
   } catch (err) {
     alert('Lỗi xóa đơn: ' + err.message);
   }
