@@ -164,11 +164,9 @@ const ShopService = (function () {
         localStorage.setItem(STORAGE_SHOPS_CACHE, JSON.stringify(finalList));
       }
 
-      // Đảm bảo activeShop hợp lệ
+      // Đảm bảo activeShop hợp lệ (luôn chọn 1 Shop cụ thể, không dùng 'all' trên trang làm việc)
       const currentActiveId = getActiveShopId();
-      if (isSysAdmin && currentActiveId === 'all') {
-        // Giữ nguyên all cho Admin
-      } else if (!finalList.some(s => s.id === currentActiveId)) {
+      if (currentActiveId === 'all' || !finalList.some(s => s.id === currentActiveId)) {
         if (finalList.length > 0) {
           setActiveShop(finalList[0]);
         }
