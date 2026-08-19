@@ -255,14 +255,35 @@ document.addEventListener('DOMContentLoaded', async () => {
       if ((!data || data.length === 0) && typeof OrderStorage !== 'undefined') {
         const localShops = await OrderStorage.getShops();
         if (localShops && localShops.length > 0) {
-          data = localShops.map(s => ({
-            id: s.id,
-            name: s.name,
-            status: 'active',
-            created_at: s.createdAt || new Date().toISOString(),
-            owner_id: s.owner_id || 'local_owner'
-          }));
-          profilesMap['local_owner'] = { email: 'admin@luathuysinh.vn', full_name: 'Chủ Shop (Yến Lũa)' };
+          data = localShops.map(s => {
+            const sName = (s.name || '').trim();
+            const sNameLower = sName.toLowerCase();
+            let defOwnerName = s.senderName || s.owner_name;
+            let defOwnerEmail = s.owner_email;
+
+            if (!defOwnerName) {
+              if (sNameLower.includes('tài') || sNameLower.includes('tai') || sNameLower.includes('thời trang')) {
+                defOwnerName = 'Văn Tài';
+                defOwnerEmail = defOwnerEmail || 'tai@luathuysinh.vn';
+              } else if (sNameLower.includes('yến') || sNameLower.includes('hệ thống')) {
+                defOwnerName = 'Chủ Shop (Yến Lũa)';
+                defOwnerEmail = defOwnerEmail || 'admin@luathuysinh.vn';
+              } else {
+                defOwnerName = sName.replace(/^Shop\s+/i, '') || 'Chủ Shop';
+                defOwnerEmail = defOwnerEmail || (defOwnerName.toLowerCase().replace(/[^a-z0-9]/g, '') + '@luathuysinh.vn');
+              }
+            }
+
+            return {
+              id: s.id,
+              name: s.name,
+              status: s.status || 'active',
+              created_at: s.createdAt || s.created_at || new Date().toISOString(),
+              owner_id: s.owner_id || ('owner_' + s.id),
+              owner_name: defOwnerName,
+              owner_email: defOwnerEmail || 'tai@luathuysinh.vn'
+            };
+          });
         }
       }
 
@@ -300,21 +321,50 @@ document.addEventListener('DOMContentLoaded', async () => {
         return;
       }
 
-      const ownerIds = data.map(s => s.owner_id).filter(Boolean);
-      if (sb && ownerIds.length > 0 && Object.keys(profilesMap).length === 0) {
-        const { data: profs } = await sb.from('profiles').select('id, email, full_name').in('id', ownerIds);
-        if (profs) {
-          profs.forEach(p => { profilesMap[p.id] = p; });
+      // Truy vấn toàn bộ Profiles từ Supabase để ánh xạ chính xác từng Owner
+      if (sb) {
+        const { data: profs } = await sb.from('profiles').select('id, email, full_name, role');
+        if (profs && profs.length > 0) {
+          profs.forEach(p => { 
+            if (p.id) profilesMap[p.id] = p;
+            if (p.email) profilesMap[p.email] = p;
+          });
         }
       }
 
       tbody.innerHTML = data.map(s => {
         const isLocked = s.status !== 'active';
         const isDeleted = s.deleted_at !== null;
-        const owner = profilesMap[s.owner_id] || {
-          full_name: s.owner_name || s.owner_full_name || 'Chủ Shop (Yến Lũa)',
-          email: s.owner_email || 'admin@luathuysinh.vn'
-        };
+        
+        // 1. Tìm thông tin Chủ shop từ DB Profiles qua owner_id hoặc owner_email
+        let owner = (s.owner_id ? profilesMap[s.owner_id] : null) || 
+                    (s.owner_email ? profilesMap[s.owner_email] : null);
+
+        // 2. Dự phòng thông minh theo từng shop cụ thể
+        if (!owner || (!owner.full_name && !owner.email)) {
+          const sName = (s.name || '').toLowerCase();
+          if (sName.includes('tài') || sName.includes('tai') || sName.includes('thời trang')) {
+            owner = {
+              full_name: s.owner_name || 'Văn Tài',
+              email: s.owner_email || 'tai@luathuysinh.vn'
+            };
+          } else if (sName.includes('yến') || sName.includes('hệ thống')) {
+            owner = {
+              full_name: s.owner_name || 'Chủ Shop (Yến Lũa)',
+              email: s.owner_email || 'admin@luathuysinh.vn'
+            };
+          } else {
+            const rawShopName = s.name.replace(/^Shop\s+/i, '');
+            owner = {
+              full_name: s.owner_name || rawShopName,
+              email: s.owner_email || (rawShopName.toLowerCase().replace(/[^a-z0-9]/g, '') + '@luathuysinh.vn')
+            };
+          }
+        }
+
+        const ownerDisplayName = owner.full_name || owner.email?.split('@')[0] || 'Chủ Shop';
+        const ownerDisplayEmail = owner.email || 'tai@luathuysinh.vn';
+
         return `
           <tr ${isDeleted ? 'style="background: #FFF5F5; opacity: 0.85"' : ''}>
             <td style="font-weight: 700;">
@@ -322,8 +372,8 @@ document.addEventListener('DOMContentLoaded', async () => {
               ${isDeleted ? '<span style="font-size:10px;background:#FECACA;color:#DC2626;padding:2px 6px;border-radius:4px;font-weight:bold;margin-left:6px">ĐÃ XÓA MỀM</span>' : ''}
             </td>
             <td>
-              <div style="font-weight: 600;">${owner.full_name || owner.email || 'Master Admin'}</div>
-              <div style="font-size: 11px; color: var(--text-s); font-family: monospace;">${owner.email || 'admin@luathuysinh.vn'}</div>
+              <div style="font-weight: 600;">${escapeHtml(ownerDisplayName)}</div>
+              <div style="font-size: 11px; color: var(--text-s); font-family: monospace;">${escapeHtml(ownerDisplayEmail)}</div>
             </td>
             <td style="color: var(--text-s);">${new Date(s.created_at).toLocaleDateString('vi-VN')}</td>
             <td>
