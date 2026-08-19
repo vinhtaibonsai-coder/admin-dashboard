@@ -181,168 +181,95 @@ async function loadAllShopData() {
   if (timeEl) timeEl.textContent = 'Cập nhật lúc: ' + new Date().toLocaleTimeString('vi-VN');
 }
 
-// ─── 1. FETCH SHOPS ──────────────────────────────────────────────────────
+// ─── 1. FETCH SHOPS (POWERED BY UNIFIED SHOPSERVICE) ─────────────────────
 async function fetchShopsList() {
+  const selectEl = document.getElementById('topbarShopSelect');
+  const titleEl = document.getElementById('topbarShopTitle');
+  const sideSubEl = document.getElementById('sidebarShopName');
+
+  // 1. RENDER NGAY LẬP TỨC 0MS TỪ CACHE (KHÔNG BAO GIỜ BỊ ĐỨNG ĐANG TẢI)
+  const isSysAdmin = currentProfile?.role === 'SYSTEM_ADMIN' || 
+                     currentProfile?.role === 'MASTER_ADMIN' || 
+                     currentProfile?.role === 'ADMIN' ||
+                     localStorage.getItem('current_role') === 'SYSTEM_ADMIN' ||
+                     localStorage.getItem('current_role') === 'ADMIN';
+
+  let cachedShops = typeof ShopService !== 'undefined' ? ShopService.getCachedShops() : [];
+  if (cachedShops.length === 0) {
+    const savedName = localStorage.getItem('current_shop_name') || 'Shop Lũa Thủy Sinh';
+    const savedId = localStorage.getItem('af_active_shop_id') || 'shop_001';
+    cachedShops = [{ id: savedId, name: savedName, status: 'active' }];
+  }
+
+  currentShops = cachedShops;
+  activeShopId = typeof ShopService !== 'undefined' ? ShopService.getActiveShopId() : (localStorage.getItem('af_active_shop_id') || cachedShops[0]?.id || 'shop_001');
+
+  // Populate ban đầu
+  if (selectEl) {
+    let initialHtml = '';
+    if (isSysAdmin) {
+      initialHtml += `<option value="all" ${activeShopId === 'all' ? 'selected' : ''}>🌐 Toàn bộ Chi Nhánh & Đơn Hàng</option>`;
+    }
+    initialHtml += cachedShops.map(s => `<option value="${s.id}" ${s.id === activeShopId ? 'selected' : ''}>🏪 ${escapeHtml(s.name)}</option>`).join('');
+    selectEl.innerHTML = initialHtml;
+  }
+
+  const activeShopObj = cachedShops.find(s => s.id === activeShopId) || (activeShopId === 'all' ? { name: 'TOÀN BỘ CHI NHÁNH & ĐƠN HÀNG' } : cachedShops[0]);
+  if (titleEl && activeShopObj) {
+    titleEl.textContent = activeShopObj.name.toUpperCase();
+  }
+  if (sideSubEl && activeShopObj) {
+    sideSubEl.textContent = '🏪 ' + activeShopObj.name;
+  }
+
+  // 2. TẢI VÀ ĐỒNG BỘ DỮ LIỆU TƯƠI MỚI TỪ SUPABASE
   if (!sb) return;
+
   try {
-    // 1. Lấy toàn bộ danh sách shop đang hoạt động từ Supabase
-    const { data: shops, error: shopsErr } = await sb
-      .from('shops')
-      .select('id, name, code, is_active, status, owner_id')
-      .is('deleted_at', null)
-      .order('name');
+    const freshShops = typeof ShopService !== 'undefined' 
+      ? await ShopService.loadUserShops(sb, currentSession, currentProfile)
+      : [];
 
-    currentShops = (!shopsErr && shops) ? shops : [];
+    if (freshShops && freshShops.length > 0) {
+      currentShops = freshShops;
 
-    // 2. Tìm shop được gán với user hiện tại (qua shop_members, profiles, hoặc owner_id)
-    let userAssignedShop = null;
-    let userPermittedShops = [];
-
-    if (currentSession && currentSession.id) {
-      // Check 1: shop_members
-      const { data: memberRows } = await sb
-        .from('shop_members')
-        .select('shop_id, role, shops(id, name, code, status, owner_id)')
-        .eq('user_id', currentSession.id)
-        .limit(20);
-
-      if (memberRows && memberRows.length > 0) {
-        memberRows.forEach(m => {
-          if (m.shops) userPermittedShops.push(m.shops);
-          else if (m.shop_id) {
-            const found = currentShops.find(s => s.id === m.shop_id);
-            if (found) userPermittedShops.push(found);
-          }
-        });
-        if (userPermittedShops.length > 0) {
-          userAssignedShop = userPermittedShops[0];
+      // Cập nhật lại dropdown với dữ liệu chính xác từ database
+      if (selectEl) {
+        let optionsHtml = '';
+        if (isSysAdmin) {
+          optionsHtml += `<option value="all" ${activeShopId === 'all' ? 'selected' : ''}>🌐 Toàn bộ Chi Nhánh & Đơn Hàng</option>`;
         }
+        optionsHtml += currentShops.map(s => `<option value="${s.id}" ${s.id === activeShopId ? 'selected' : ''}>🏪 ${escapeHtml(s.name)}</option>`).join('');
+        selectEl.innerHTML = optionsHtml;
       }
 
-      // Check 2: profiles.shop_id
-      if (!userAssignedShop && currentProfile && currentProfile.shop_id) {
-        userAssignedShop = currentShops.find(s => s.id === currentProfile.shop_id);
-        if (userAssignedShop && !userPermittedShops.some(s => s.id === userAssignedShop.id)) {
-          userPermittedShops.push(userAssignedShop);
-        }
+      // Đảm bảo activeShop chuẩn xác
+      const resolvedActive = currentShops.find(s => s.id === activeShopId) || (activeShopId === 'all' ? { name: 'TOÀN BỘ CHI NHÁNH & ĐƠN HÀNG' } : currentShops[0]);
+      if (resolvedActive) {
+        if (typeof ShopService !== 'undefined') ShopService.setActiveShop(resolvedActive);
+        if (titleEl) titleEl.textContent = resolvedActive.name.toUpperCase();
+        if (sideSubEl) sideSubEl.textContent = '🏪 ' + resolvedActive.name;
       }
-
-      // Check 3: owner_id trong bảng shops
-      if (!userAssignedShop) {
-        const ownedShops = currentShops.filter(s => s.owner_id === currentSession.id);
-        if (ownedShops.length > 0) {
-          userAssignedShop = ownedShops[0];
-          userPermittedShops = [...userPermittedShops, ...ownedShops];
-        }
-      }
-    }
-
-    // 3. Nếu chưa có bất kỳ shop nào trong DB cho user này, tự động khởi tạo Shop thật
-    if (currentShops.length === 0 && currentSession && currentSession.id) {
-      let defaultName = 'Shop Lũa Thủy Sinh';
-      if (currentProfile?.full_name && currentProfile.full_name !== 'Chủ Shop') {
-        defaultName = 'Shop ' + currentProfile.full_name;
-      } else if (currentSession.email) {
-        const domainOrName = currentSession.email.split('@')[0];
-        defaultName = domainOrName.toLowerCase().includes('tai') || domainOrName.toLowerCase().includes('thuy') 
-          ? 'Shop Lũa Thủy Sinh' 
-          : 'Shop ' + domainOrName.toUpperCase();
-      }
-
-      const { data: newShop, error: createShopErr } = await sb.from('shops').insert({
-        name: defaultName,
-        owner_id: currentSession.id,
-        status: 'active'
-      }).select().maybeSingle();
-
-      if (newShop && !createShopErr) {
-        currentShops = [newShop];
-        userAssignedShop = newShop;
-        userPermittedShops = [newShop];
-        activeShopId = newShop.id;
-        
-        await sb.from('shop_members').insert({
-          shop_id: newShop.id,
-          user_id: currentSession.id,
-          role: 'OWNER'
-        }).catch(() => {});
-
-        await sb.from('shop_quotas').insert({
-          shop_id: newShop.id,
-          quota_limit: 1000,
-          quota_used: 0,
-          plan: 'PRO'
-        }).catch(() => {});
-      }
-    }
-
-    // 4. Quyết định Shop Kích Hoạt (Active Shop)
-    const savedShopId = localStorage.getItem('af_active_shop_id');
-    if (savedShopId && currentShops.some(s => s.id === savedShopId)) {
-      activeShopId = savedShopId;
-    } else if (userAssignedShop) {
-      activeShopId = userAssignedShop.id;
-    } else if (currentShops.length > 0) {
-      activeShopId = currentShops[0].id;
-    }
-
-    const activeShop = currentShops.find(s => s.id === activeShopId) || userAssignedShop || currentShops[0];
-    if (activeShop) {
-      activeShopId = activeShop.id;
-      localStorage.setItem('af_active_shop_id', activeShop.id);
-      localStorage.setItem('current_shop_id', activeShop.id);
-      localStorage.setItem('current_shop_name', activeShop.name);
-    }
-
-    // 5. Cập nhật Tên Shop thật lên Topbar & Sidebar Brand Sub
-    const titleEl = document.getElementById('topbarShopTitle');
-    const sideSubEl = document.getElementById('sidebarShopName');
-    const shopDisplayName = activeShop ? activeShop.name : 'AUTO FILL ORDER';
-
-    if (titleEl) {
-      titleEl.textContent = shopDisplayName.toUpperCase();
-    }
-    if (sideSubEl && activeShop) {
-      sideSubEl.textContent = '🏪 ' + activeShop.name;
-    }
-
-    // 6. Cập nhật Dropdown Chi nhánh / Shop
-    const selectEl = document.getElementById('topbarShopSelect');
-    if (selectEl) {
-      const isSysAdmin = currentProfile?.role === 'SYSTEM_ADMIN' || 
-                         currentProfile?.role === 'MASTER_ADMIN' || 
-                         (typeof AuthService !== 'undefined' && typeof AuthService.isSystemAdmin === 'function' && await AuthService.isSystemAdmin().catch(() => false));
-
-      const displayList = (isSysAdmin && currentShops.length > 0) ? currentShops : (userPermittedShops.length > 0 ? userPermittedShops : currentShops);
-
-      let optionsHtml = '';
-      if (isSysAdmin) {
-        optionsHtml += `<option value="all" ${activeShopId === 'all' ? 'selected' : ''}>🌐 Toàn bộ Chi Nhánh & Đơn Hàng</option>`;
-      }
-      optionsHtml += displayList.map(s => `<option value="${s.id}" ${s.id === activeShopId ? 'selected' : ''}>🏪 ${escapeHtml(s.name)}</option>`).join('');
-      selectEl.innerHTML = optionsHtml;
-
-      selectEl.onchange = (e) => {
-        activeShopId = e.target.value;
-        localStorage.setItem('af_active_shop_id', activeShopId);
-        localStorage.setItem('current_shop_id', activeShopId);
-        const selectedShop = currentShops.find(s => s.id === activeShopId);
-        if (selectedShop) {
-          localStorage.setItem('current_shop_name', selectedShop.name);
-        }
-        if (titleEl) {
-          titleEl.textContent = selectedShop ? selectedShop.name.toUpperCase() : 'TOÀN BỘ CHI NHÁNH & ĐƠN HÀNG';
-        }
-        if (sideSubEl && selectedShop) {
-          sideSubEl.textContent = '🏪 ' + selectedShop.name;
-        }
-        filterAndRenderAll();
-        renderShopSettingsForm();
-        fetchShopStaff();
-      };
     }
   } catch (err) {
-    console.warn('Lỗi tải danh sách shop:', err);
+    console.warn('[Dashboard] Lỗi tải shop từ Supabase:', err);
+  }
+
+  // 3. BẮT SỰ KIỆN KHI NGƯỜI DÙNG CHỌN CHI NHÁNH MỚI
+  if (selectEl) {
+    selectEl.onchange = (e) => {
+      activeShopId = e.target.value;
+      const chosen = currentShops.find(s => s.id === activeShopId) || { id: activeShopId, name: 'Toàn bộ Chi Nhánh & Đơn Hàng' };
+      if (typeof ShopService !== 'undefined') {
+        ShopService.setActiveShop(chosen);
+      }
+      if (titleEl) titleEl.textContent = chosen.name.toUpperCase();
+      if (sideSubEl) sideSubEl.textContent = '🏪 ' + chosen.name;
+
+      filterAndRenderAll();
+      renderShopSettingsForm();
+      fetchShopStaff();
+    };
   }
 }
 
@@ -1353,22 +1280,23 @@ function initEventHandlers() {
 
     try {
       if (sb) {
-        // 1. Cập nhật tên shop vào bảng shops
-        if (newShopName && activeShopId && activeShopId !== 'all') {
-          await sb.from('shops').update({ name: newShopName }).eq('id', activeShopId);
-          const sObj = currentShops.find(s => s.id === activeShopId);
-          if (sObj) sObj.name = newShopName;
-          const titleEl = document.getElementById('topbarShopTitle');
-          if (titleEl) titleEl.textContent = newShopName.toUpperCase();
-          const sideSubEl = document.getElementById('sidebarShopName');
-          if (sideSubEl) sideSubEl.textContent = '🏪 ' + newShopName;
+        if (typeof ShopService !== 'undefined') {
+          await ShopService.saveShopFullConfig(sb, activeShopId, newShopName, vnpostConfig, jtConfig);
+        } else {
+          // Fallback lưu trực tiếp
+          if (newShopName && activeShopId && activeShopId !== 'all') {
+            await sb.from('shops').update({ name: newShopName }).eq('id', activeShopId);
+          }
+          await sb.from('carrier_configs').upsert([
+            { carrier: 'vnpost', config: vnpostConfig },
+            { carrier: 'jt', config: jtConfig }
+          ], { onConflict: 'carrier' });
         }
 
-        // 2. Cập nhật cấu hình bưu cục
-        await sb.from('carrier_configs').upsert([
-          { carrier: 'vnpost', config: vnpostConfig },
-          { carrier: 'jt', config: jtConfig }
-        ], { onConflict: 'carrier' });
+        const titleEl = document.getElementById('topbarShopTitle');
+        if (titleEl && newShopName) titleEl.textContent = newShopName.toUpperCase();
+        const sideSubEl = document.getElementById('sidebarShopName');
+        if (sideSubEl && newShopName) sideSubEl.textContent = '🏪 ' + newShopName;
       }
       alert('Đã lưu cấu hình Shop & Bưu Cục thành công vào Supabase! Tên shop và thông tin người gửi đã được cập nhật.');
     } catch (err) {
