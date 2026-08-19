@@ -262,8 +262,23 @@ document.addEventListener('DOMContentLoaded', async () => {
             created_at: s.createdAt || new Date().toISOString(),
             owner_id: s.owner_id || 'local_owner'
           }));
-          profilesMap['local_owner'] = { email: 'yen_admin@system.com', full_name: 'Chủ Shop (Yến Lũa)' };
+          profilesMap['local_owner'] = { email: 'admin@luathuysinh.vn', full_name: 'Chủ Shop (Yến Lũa)' };
         }
+      }
+
+      // TỰ ĐỘNG KHỬ TRÙNG LẶP & LOẠI BỎ CÁC BẢN GHI RÁC TỰ SINH
+      if (data && data.length > 0) {
+        const uniqueShops = [];
+        const seenNames = new Set();
+        data.forEach(s => {
+          const nameLower = (s.name || '').trim().toLowerCase();
+          if (nameLower === 'shop admin') return; // Loại bỏ bản ghi Shop admin tự sinh
+          if (!seenNames.has(nameLower)) {
+            seenNames.add(nameLower);
+            uniqueShops.push(s);
+          }
+        });
+        data = uniqueShops;
       }
 
       // Lọc theo từ khóa tìm kiếm

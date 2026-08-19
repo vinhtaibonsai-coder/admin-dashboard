@@ -966,6 +966,24 @@
             list = raw ? JSON.parse(raw) : [];
           }
 
+          // Khử trùng lặp và loại bỏ các shop admin rác
+          if (Array.isArray(list) && list.length > 0) {
+            const cleanList = [];
+            const seen = new Set();
+            list.forEach(s => {
+              const name = (s.name || '').trim().toLowerCase();
+              if (name === 'shop admin') return;
+              if (!seen.has(name)) {
+                seen.add(name);
+                cleanList.push(s);
+              }
+            });
+            list = cleanList;
+            if (!this.isExtensionAvailable()) {
+              localStorage.setItem(this._shopsKey, JSON.stringify(cleanList));
+            }
+          }
+
           // Lọc danh sách Shop chỉ thuộc về tài khoản đã đăng nhập (Shop Account)
           if (user && user.id) {
             // 1. Thử truy vấn từ Supabase nếu client đã khởi tạo
