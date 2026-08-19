@@ -98,15 +98,16 @@
       inset: 0;
       background: rgba(15, 23, 42, 0.6);
       backdrop-filter: blur(4px);
-      display: flex;
+      display: none;
       align-items: center;
       justify-content: center;
       z-index: 10000;
       opacity: 0;
       pointer-events: none;
-      transition: all 0.2s ease;
+      transition: opacity 0.2s ease;
     }
     .modal-overlay.active {
+      display: flex !important;
       opacity: 1;
       pointer-events: auto;
     }
@@ -870,7 +871,7 @@ Anh gửi cho em cây kim quýt về 128 Lê Văn Sỹ, P10, Phú Nhuận, HCM n
   <!-- MODALS CONTAINER -->
   
   <!-- 1. Add Staff Modal -->
-  <div class="modal-overlay" id="modalAddStaff">
+  <div class="modal-overlay" id="modalAddStaff" style="display: none;">
     <div class="modal-box">
       <div style="padding:16px 20px; border-bottom:1px solid var(--border); display:flex; justify-content:space-between; align-items:center;">
         <h3 style="font-size:15px; font-weight:800;"><i class="ph ph-user-plus text-indigo-500"></i> Thêm Nhân Viên Vào Shop</h3>
@@ -898,7 +899,7 @@ Anh gửi cho em cây kim quýt về 128 Lê Văn Sỹ, P10, Phú Nhuận, HCM n
   </div>
 
   <!-- 2. Add Blacklist Phone Modal -->
-  <div class="modal-overlay" id="modalAddBlacklist">
+  <div class="modal-overlay" id="modalAddBlacklist" style="display: none;">
     <div class="modal-box">
       <div style="padding:16px 20px; border-bottom:1px solid var(--border); display:flex; justify-content:space-between; align-items:center;">
         <h3 style="font-size:15px; font-weight:800; color:#EF4444;"><i class="ph ph-warning-octagon"></i> Thêm Số Điện Thoại Bom Hàng</h3>

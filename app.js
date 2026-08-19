@@ -1002,12 +1002,30 @@ Người nhận: Trần Hải Đăng - SĐT: 0918.776.889. Tiền COD thu 850k n
   });
 }
 
+function openModalEl(el) {
+  if (!el) return;
+  el.style.display = 'flex';
+  requestAnimationFrame(() => {
+    el.classList.add('active');
+  });
+}
+
+function closeModalEl(el) {
+  if (!el) return;
+  el.classList.remove('active');
+  setTimeout(() => {
+    if (!el.classList.contains('active')) {
+      el.style.display = 'none';
+    }
+  }, 200);
+}
+
 function initModals() {
   // Add Staff Modal
   const modalStaff = document.getElementById('modalAddStaff');
-  document.getElementById('btnOpenAddStaffModal')?.addEventListener('click', () => modalStaff?.classList.add('active'));
-  document.getElementById('btnCloseAddStaffModal')?.addEventListener('click', () => modalStaff?.classList.remove('active'));
-  document.getElementById('btnCancelAddStaff')?.addEventListener('click', () => modalStaff?.classList.remove('active'));
+  document.getElementById('btnOpenAddStaffModal')?.addEventListener('click', () => openModalEl(modalStaff));
+  document.getElementById('btnCloseAddStaffModal')?.addEventListener('click', () => closeModalEl(modalStaff));
+  document.getElementById('btnCancelAddStaff')?.addEventListener('click', () => closeModalEl(modalStaff));
 
   document.getElementById('btnConfirmAddStaff')?.addEventListener('click', async () => {
     const ident = (document.getElementById('txtStaffIdentifier')?.value || '').trim();
@@ -1028,7 +1046,7 @@ function initModals() {
       });
       if (error) throw error;
       alert(`Đã thêm ${targetUser.full_name || targetUser.email} vào Shop với vai trò ${role}!`);
-      modalStaff?.classList.remove('active');
+      closeModalEl(modalStaff);
       document.getElementById('txtStaffIdentifier').value = '';
       await fetchShopStaff();
       renderStaffTable();
@@ -1039,9 +1057,9 @@ function initModals() {
 
   // Blacklist Modal
   const modalBlacklist = document.getElementById('modalAddBlacklist');
-  document.getElementById('btnAddBlacklistModalBtn')?.addEventListener('click', () => modalBlacklist?.classList.add('active'));
-  document.getElementById('btnCloseBlacklistModal')?.addEventListener('click', () => modalBlacklist?.classList.remove('active'));
-  document.getElementById('btnCancelBlacklist')?.addEventListener('click', () => modalBlacklist?.classList.remove('active'));
+  document.getElementById('btnAddBlacklistModalBtn')?.addEventListener('click', () => openModalEl(modalBlacklist));
+  document.getElementById('btnCloseBlacklistModal')?.addEventListener('click', () => closeModalEl(modalBlacklist));
+  document.getElementById('btnCancelBlacklist')?.addEventListener('click', () => closeModalEl(modalBlacklist));
 
   document.getElementById('btnConfirmAddBlacklist')?.addEventListener('click', async () => {
     const phone = (document.getElementById('txtBlacklistPhone')?.value || '').trim();
@@ -1061,7 +1079,7 @@ function initModals() {
         });
       }
       alert(`Đã đưa số ${phone} vào Danh Sách Đen thành công! Extension sẽ phát cảnh báo đỏ ngay lập tức.`);
-      modalBlacklist?.classList.remove('active');
+      closeModalEl(modalBlacklist);
       document.getElementById('txtBlacklistPhone').value = '';
       document.getElementById('txtBlacklistReason').value = '';
       await fetchCustomers();
