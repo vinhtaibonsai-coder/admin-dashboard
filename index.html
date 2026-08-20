@@ -266,12 +266,38 @@
           <i id="themeIcon" class="ph ph-sun text-base"></i>
         </button>
 
-        <!-- User Profile Pill -->
-        <div class="user-profile-pill" id="topbarUserPill">
-          <div class="avatar" id="topbarAvatar" style="background:#4F46E5; color:#fff;">AF</div>
-          <div class="user-pill-info">
-            <span class="user-pill-name" id="topbarUserName">Đang tải...</span>
-            <span class="user-pill-role" id="topbarUserRoleText" style="color:#4F46E5; font-weight:700;">Chủ Shop</span>
+        <!-- User Profile Dropdown Menu -->
+        <div style="position: relative;">
+          <div class="user-profile-pill" id="topbarUserPill" style="cursor: pointer; display: flex; align-items: center; gap: 8px; padding: 6px 12px; border-radius: 8px; border: 1px solid var(--border); background: var(--card); transition: all 0.2s;">
+            <div class="avatar" id="topbarAvatar" style="background:#4F46E5; color:#fff; width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 700;">AF</div>
+            <div class="user-pill-info" style="display: flex; flex-direction: column;">
+              <span class="user-pill-name" id="topbarUserName" style="font-size: 13px; font-weight: 700; color: var(--text);">Đang tải...</span>
+              <span class="user-pill-role" id="topbarUserRoleText" style="font-size: 11px; color:#4F46E5; font-weight:700;">Chủ Shop</span>
+            </div>
+            <i class="ph ph-caret-down" style="font-size: 12px; color: var(--text-s);"></i>
+          </div>
+
+          <!-- Dropdown Card -->
+          <div id="topbarUserDropdown" class="card" style="display: none; position: absolute; top: calc(100% + 8px); right: 0; width: 220px; z-index: 1000; box-shadow: 0 10px 25px -5px rgba(0,0,0,0.1), 0 8px 10px -6px rgba(0,0,0,0.1); border: 1px solid var(--border); border-radius: 12px; background: var(--card); padding: 8px 0; overflow: hidden; animation: slideDown 0.15s ease;">
+            <div style="padding: 12px 16px; border-bottom: 1px solid var(--border); margin-bottom: 4px;">
+              <div id="dropdownFullEmail" style="font-size: 11px; color: var(--text-s); word-break: break-all; font-family: monospace;">—</div>
+              <div id="dropdownShopName" style="font-size: 11px; font-weight: 700; color: var(--primary); margin-top: 4px; display: flex; align-items: center; gap: 4px;">
+                <i class="ph ph-storefront"></i> <span>—</span>
+              </div>
+            </div>
+            <button class="dropdown-item" id="btnDropdownProfile" style="display: flex; align-items: center; gap: 10px; width: 100%; border: none; background: transparent; padding: 10px 16px; font-size: 13px; color: var(--text); font-weight: 600; cursor: pointer; text-align: left; transition: background 0.15s;">
+              <i class="ph ph-user-circle" style="font-size: 18px; color: var(--primary);"></i> Cài đặt tài khoản
+            </button>
+            <button class="dropdown-item" id="btnDropdownPassword" style="display: flex; align-items: center; gap: 10px; width: 100%; border: none; background: transparent; padding: 10px 16px; font-size: 13px; color: var(--text); font-weight: 600; cursor: pointer; text-align: left; transition: background 0.15s;">
+              <i class="ph ph-key" style="font-size: 18px; color: var(--primary);"></i> Đổi mật khẩu
+            </button>
+            <button class="dropdown-item" id="btnDropdownDevices" style="display: flex; align-items: center; gap: 10px; width: 100%; border: none; background: transparent; padding: 10px 16px; font-size: 13px; color: var(--text); font-weight: 600; cursor: pointer; text-align: left; transition: background 0.15s;">
+              <i class="ph ph-browsers" style="font-size: 18px; color: var(--primary);"></i> Quản lý máy tính
+            </button>
+            <div style="height: 1px; background: var(--border); margin: 4px 0;"></div>
+            <button class="dropdown-item" id="btnDropdownLogout" style="display: flex; align-items: center; gap: 10px; width: 100%; border: none; background: transparent; padding: 10px 16px; font-size: 13px; color: #EF4444; font-weight: 700; cursor: pointer; text-align: left; transition: background 0.15s;">
+              <i class="ph ph-sign-out" style="font-size: 18px;"></i> Đăng xuất
+            </button>
           </div>
         </div>
       </div>
@@ -590,10 +616,11 @@
                     <th>Số Đơn</th>
                     <th>Tổng Tiền COD</th>
                     <th>Phân Hạng</th>
+                    <th style="width:120px; text-align:center;">Thao Tác</th>
                   </tr>
                 </thead>
                 <tbody id="tbodyCustomersList">
-                  <tr><td colspan="6" style="text-align:center; padding:20px; color:var(--text-s);">Đang nạp dữ liệu khách hàng...</td></tr>
+                  <tr><td colspan="7" style="text-align:center; padding:20px; color:var(--text-s);">Đang nạp dữ liệu khách hàng...</td></tr>
                 </tbody>
               </table>
             </div>
@@ -662,6 +689,7 @@
           <div class="card" style="padding:16px; border-left: 4px solid #8B5CF6;">
             <div style="font-size:11px; font-weight:700; color:var(--text-s); text-transform:uppercase; margin-bottom:4px;"><i class="ph ph-shield-check text-purple-500"></i> Hạn Ngạch & Gói Cước</div>
             <div id="staffTabPlanBadge" style="font-size:16px; font-weight:800; color:#8B5CF6; margin-bottom:4px;">GÓI PRO (Tối đa 20 Acc)</div>
+            <div id="staffTabPlanBadge" style="font-size:16px; font-weight:800; color:#8B5CF6; margin-bottom:4px;">GÓI PRO (Tối đa 20 Acc)</div>
             <div style="font-size:11px; color:var(--text-s);">Trạng thái: <span class="status-online" style="font-size:10px;">Đang hoạt động</span></div>
           </div>
         </div>
@@ -729,7 +757,14 @@
           </button>
         </div>
 
-        <div style="display:grid; grid-template-columns: 1fr 1fr; gap:16px;">
+        <!-- Sub-tabs navigation -->
+        <div style="display:flex; border-bottom:1px solid var(--border); margin-bottom:16px; gap:16px;">
+          <button id="btnSubTabGeneral" style="border:none; background:transparent; padding:8px 16px; font-weight:700; font-size:13px; color:var(--primary); border-bottom:2px solid var(--primary); cursor:pointer; font-family:inherit;">🏪 Thông Tin Kho & Vận Chuyển</button>
+          <button id="btnSubTabAiPrompt" style="border:none; background:transparent; padding:8px 16px; font-weight:600; font-size:13px; color:var(--text-s); cursor:pointer; font-family:inherit;">🧠 Cấu Hình AI Smart Fill</button>
+        </div>
+
+        <!-- Sub-tab: General Settings -->
+        <div id="sectSettingsGeneral" style="display:grid; grid-template-columns: 1fr 1fr; gap:16px;">
           <!-- Shop Info & Sender Address -->
           <div class="card">
             <h3 style="font-size:14px; font-weight:700; margin-bottom:14px;"><i class="ph ph-storefront text-indigo-500"></i> Thông Tin Kho Gửi Hàng Mặc Định</h3>
@@ -769,7 +804,7 @@
           <div style="display:flex; flex-direction:column; gap:16px;">
             <!-- Carrier Configs -->
             <div class="card">
-              <h3 style="font-size:14px; font-weight:700; margin-bottom:14px;"><i class="ph ph-truck text-indigo-500"></i> Cấu Hình Tài Khoản Bưu Điện</h3>
+              <h3 style="font-size:14px; font-weight:700; margin-bottom:14px;"><i class="ph ph-truck text-indigo-500"></i> Cấu Hinh Tài Khoản Bưu Điện</h3>
 
               <div class="form-group" style="margin-bottom:12px;">
                 <label style="color:#B45309; font-weight:700;"><i class="ph ph-envelope-simple"></i> Mã Khách Hàng VNPost (Bưu Điện):</label>
@@ -808,16 +843,22 @@
                 <input type="text" id="cfgBankAccountHolder" class="field" placeholder="Ví dụ: NGUYEN VAN TAI" style="margin-top:4px;">
               </div>
             </div>
+          </div>
+        </div>
 
-            <!-- AI Prompt Rules -->
-            <div class="card">
-              <h3 style="font-size:14px; font-weight:700; margin-bottom:12px;"><i class="ph ph-brain text-indigo-500"></i> Quy Tắc Prompt AI Riêng Của Shop</h3>
-              <p style="font-size:11px; color:var(--text-s); margin-bottom:10px;">
-                Cấu hình quy tắc bóc tách đơn hàng bằng AI riêng cho shop của bạn (Ví dụ: Ưu tiên bóc tách tên phụ, bỏ qua SĐT phụ...).
-              </p>
-              <div class="form-group">
-                <textarea id="cfgCustomPromptRules" class="field" style="height:80px; resize:vertical;" placeholder="Ví dụ: Lấy tên trong ngoặc đơn nếu có, mặc định note là 'Cho xem hàng'..."></textarea>
-              </div>
+        <!-- Sub-tab: AI Smart Fill Settings -->
+        <div id="sectSettingsAiPrompt" style="display:none;">
+          <div class="card">
+            <h3 style="font-size:14px; font-weight:700; margin-bottom:12px; color:var(--primary);"><i class="ph ph-brain"></i> Quy Tắc Prompt AI Riêng Của Shop</h3>
+            <p style="font-size:12px; color:var(--text-s); margin-bottom:14px; line-height:1.5;">
+              Cấu hình quy tắc bóc tách đơn hàng bằng AI riêng cho shop của bạn (Ví dụ: Ưu tiên bóc tách tên phụ, bỏ qua SĐT phụ, chuyển tên sản phẩm viết tắt...).
+            </p>
+            <div class="form-group" style="margin-bottom:16px;">
+              <textarea id="cfgCustomPromptRules" class="field" style="height:220px; resize:vertical; font-family:inherit; margin-top:6px;" placeholder="Ví dụ: Lấy tên trong ngoặc đơn nếu có, mặc định note là 'Cho xem hàng'..."></textarea>
+            </div>
+            <div style="background:#F0FDF4; border:1px solid #BBF7D0; padding:12px; border-radius:8px; display:flex; align-items:center; gap:10px; color:#166534; font-size:12px;">
+              <i class="ph ph-info-bold" style="font-size:18px;"></i>
+              <span>Cấu hình Prompt này sẽ được gửi kèm theo mỗi yêu cầu bóc đơn AI của shop để tăng độ chính xác phân tích địa chỉ và mặt hàng.</span>
             </div>
           </div>
         </div>
@@ -1062,6 +1103,244 @@ Anh gửi cho em cây kim quýt về 128 Lê Văn Sỹ, P10, Phú Nhuận, HCM n
         <div style="display:flex; justify-content:flex-end; gap:8px;">
           <button class="btn btn-secondary" id="btnCancelBlacklist">Hủy</button>
           <button class="btn btn-primary" id="btnConfirmAddBlacklist" style="background:#EF4444; border-color:#EF4444;"><i class="ph ph-shield-warning"></i> Đưa Vào Blacklist</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 3. Order Details Modal -->
+  <div class="modal-overlay" id="modalOrderDetails" style="display: none;">
+    <div class="modal-box" style="max-width: 600px;">
+      <div style="padding:16px 20px; border-bottom:1px solid var(--border); display:flex; justify-content:space-between; align-items:center;">
+        <h3 style="font-size:15px; font-weight:800; color:var(--primary);"><i class="ph ph-receipt-bold"></i> Chi Tiết Đơn Hàng Vận Chuyển</h3>
+        <button class="btn btn-secondary btn-sm" id="btnCloseOrderDetailsModal" style="border:none;"><i class="ph ph-x text-lg"></i></button>
+      </div>
+      <div style="padding:20px; max-height:70vh; overflow-y:auto;">
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-bottom:16px;">
+          <div>
+            <span style="font-size:11px; font-weight:700; color:var(--text-s);">MÃ ĐƠN HÀNG</span>
+            <div id="lblDetailOrderId" style="font-weight:700; color:var(--text); margin-top:2px;">—</div>
+          </div>
+          <div>
+            <span style="font-size:11px; font-weight:700; color:var(--text-s);">MÃ VẬN ĐƠN (TRACKING)</span>
+            <div id="lblDetailTrackingCode" style="font-weight:800; color:#10B981; margin-top:2px;">—</div>
+          </div>
+        </div>
+
+        <div style="background:var(--bg); border:1px solid var(--border); padding:12px; border-radius:8px; margin-bottom:16px;">
+          <h4 style="font-size:12px; font-weight:800; margin-bottom:8px; color:var(--primary); text-transform:uppercase;"><i class="ph ph-user"></i> Người Nhận Hàng</h4>
+          <div style="display:grid; grid-template-columns:1fr 1.5fr; gap:8px; font-size:12.5px;">
+            <div style="color:var(--text-s);">Họ và tên:</div>
+            <div id="lblDetailCustName" style="font-weight:700;">—</div>
+            <div style="color:var(--text-s);">Số điện thoại:</div>
+            <div id="lblDetailCustPhone" style="font-weight:700; color:var(--primary);">—</div>
+            <div style="color:var(--text-s);">Địa chỉ nhận:</div>
+            <div id="lblDetailCustAddress" style="font-weight:600; white-space:pre-wrap;">—</div>
+          </div>
+        </div>
+
+        <div style="background:var(--bg); border:1px solid var(--border); padding:12px; border-radius:8px; margin-bottom:16px;">
+          <h4 style="font-size:12px; font-weight:800; margin-bottom:8px; color:var(--primary); text-transform:uppercase;"><i class="ph ph-truck"></i> Thông Tin Vận Chuyển & COD</h4>
+          <div style="display:grid; grid-template-columns:1fr 1.5fr; gap:8px; font-size:12.5px;">
+            <div style="color:var(--text-s);">Bưu cục vận chuyển:</div>
+            <div id="lblDetailCarrier" style="font-weight:700; color:#D97706;">—</div>
+            <div style="color:var(--text-s);">Số tiền thu hộ (COD):</div>
+            <div id="lblDetailCodAmount" style="font-weight:800; color:#10B981; font-size:14px;">—</div>
+            <div style="color:var(--text-s);">Cân nặng (grams):</div>
+            <div id="lblDetailWeight" style="font-weight:700;">—</div>
+            <div style="color:var(--text-s);">Sản phẩm / Ghi chú:</div>
+            <div id="lblDetailProductNote" style="font-weight:600;">—</div>
+          </div>
+        </div>
+
+        <div style="background:var(--bg); border:1px solid var(--border); padding:12px; border-radius:8px;">
+          <h4 style="font-size:12px; font-weight:800; margin-bottom:8px; color:var(--primary); text-transform:uppercase;"><i class="ph ph-shield-check"></i> Nhật Ký Đẩy Đơn (Audit)</h4>
+          <div style="display:grid; grid-template-columns:1fr 1.5fr; gap:8px; font-size:12.5px;">
+            <div style="color:var(--text-s);">Thiết bị đẩy đơn:</div>
+            <div id="lblDetailDeviceName" style="font-weight:700;">—</div>
+            <div style="color:var(--text-s);">Thời gian đẩy đơn:</div>
+            <div id="lblDetailSubmittedAt" style="font-weight:600;">—</div>
+            <div style="color:var(--text-s);">Tài khoản đẩy đơn:</div>
+            <div id="lblDetailUserEmail" style="font-weight:700;">—</div>
+          </div>
+        </div>
+      </div>
+      <div style="padding:16px 20px; border-top:1px solid var(--border); display:flex; justify-content:flex-end; gap:8px;">
+        <button class="btn btn-secondary" id="btnDetailCopyAll"><i class="ph ph-copy"></i> Sao Chép Thông Tin</button>
+        <button class="btn btn-primary" id="btnDetailClose">Đóng</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 4. Customer Detail Modal -->
+  <div class="modal-overlay" id="modalCustomerDetail" style="display: none;">
+    <div class="modal-box" style="max-width: 720px;">
+      <div style="padding:16px 20px; border-bottom:1px solid var(--border); display:flex; justify-content:space-between; align-items:center;">
+        <h3 style="font-size:15px; font-weight:800; color:var(--primary);"><i class="ph ph-user-focus"></i> Thông Tin Chi Tiết Khách Hàng (CRM)</h3>
+        <button class="btn btn-secondary btn-sm" id="btnCloseCustomerDetailModal" style="border:none;"><i class="ph ph-x text-lg"></i></button>
+      </div>
+      <div style="padding:20px; max-height:70vh; overflow-y:auto;">
+        <div style="display:grid; grid-template-columns:1.2fr 1fr; gap:16px; margin-bottom:16px;">
+          <div style="display:flex; flex-direction:column; gap:8px;">
+            <div>
+              <label style="font-size:11px; font-weight:700;">Họ và tên khách hàng:</label>
+              <input type="text" id="txtCustDetailName" class="field" style="margin-top:4px;">
+            </div>
+            <div>
+              <label style="font-size:11px; font-weight:700;">Số điện thoại (Key):</label>
+              <input type="text" id="txtCustDetailPhone" class="field" style="margin-top:4px;" readonly>
+            </div>
+            <div>
+              <label style="font-size:11px; font-weight:700;">Địa chỉ giao hàng mặc định:</label>
+              <textarea id="txtCustDetailAddress" class="field" style="margin-top:4px; height:60px; resize:none;"></textarea>
+            </div>
+          </div>
+          <div style="display:flex; flex-direction:column; gap:8px;">
+            <div>
+              <label style="font-size:11px; font-weight:700;">Phân loại (Segment):</label>
+              <select id="selectCustDetailSegment" class="field" style="margin-top:4px;">
+                <option value="Thành viên">Thành viên</option>
+                <option value="VIP">👑 Khách VIP</option>
+                <option value="Blacklist">🚨 Blacklist</option>
+              </select>
+            </div>
+            <div>
+              <label style="font-size:11px; font-weight:700;">Ghi chú cảnh báo / Lịch sử mua:</label>
+              <textarea id="txtCustDetailNotes" class="field" style="margin-top:4px; height:105px; resize:none;" placeholder="Ghi nhận hành vi bom hàng, yêu cầu đặt cọc..."></textarea>
+            </div>
+          </div>
+        </div>
+
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; background:#EEF2FF; border:1px solid #C7D2FE; padding:12px 16px; border-radius:8px; margin-bottom:16px;">
+          <div style="text-align:center;">
+            <div style="font-size:11px; font-weight:700; color:#4338CA;">TỔNG CHI TIÊU COD</div>
+            <div id="lblCustDetailTotalCod" style="font-size:18px; font-weight:800; color:#10B981; margin-top:2px;">0 đ</div>
+          </div>
+          <div style="text-align:center;">
+            <div style="font-size:11px; font-weight:700; color:#4338CA;">TỔNG SỐ ĐƠN HÀNG ĐÃ MUA</div>
+            <div id="lblCustDetailTotalOrders" style="font-size:18px; font-weight:800; color:var(--text); margin-top:2px;">0 đơn</div>
+          </div>
+        </div>
+
+        <h4 style="font-size:12.5px; font-weight:800; margin-bottom:8px; color:var(--primary);"><i class="ph ph-clock-counter-clockwise"></i> Lịch Sử Mua Hàng & Vận Đơn</h4>
+        <div class="table-wrap" style="max-height: 200px; overflow-y: auto; border: 1px solid var(--border); border-radius: 8px;">
+          <table class="table" style="font-size: 12px; margin-bottom: 0;">
+            <thead style="position: sticky; top: 0; background: var(--bg); z-index: 10;">
+              <tr>
+                <th>Thời gian</th>
+                <th>Mã vận đơn</th>
+                <th>Sản phẩm / Note</th>
+                <th>COD</th>
+                <th>Bưu cục</th>
+              </tr>
+            </thead>
+            <tbody id="tbodyCustDetailOrders">
+              <tr>
+                <td colspan="5" style="text-align:center; color:var(--text-s);">Chưa có đơn hàng nào đẩy từ hệ thống.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+      <div style="padding:16px 20px; border-top:1px solid var(--border); display:flex; justify-content:flex-end; gap:8px;">
+        <button class="btn btn-secondary" id="btnCancelCustDetail">Đóng</button>
+        <button class="btn btn-primary" id="btnSaveCustDetail"><i class="ph ph-floppy-disk"></i> Lưu Thông Tin</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 5. Staff Detail & Edit Modal -->
+  <div class="modal-overlay" id="modalStaffDetail" style="display: none;">
+    <div class="modal-box" style="max-width: 440px;">
+      <div style="padding:16px 20px; border-bottom:1px solid var(--border); display:flex; justify-content:space-between; align-items:center;">
+        <h3 style="font-size:15px; font-weight:800;"><i class="ph ph-user-gear text-indigo-500"></i> Thiết Lập Tài Khoản Nhân Viên</h3>
+        <button class="btn btn-secondary btn-sm" id="btnCloseStaffDetailModal" style="border:none;"><i class="ph ph-x text-lg"></i></button>
+      </div>
+      <div style="padding:20px;">
+        <input type="hidden" id="txtStaffDetailMemberId">
+        <div class="form-group" style="margin-bottom:12px;">
+          <label style="font-weight:700;">Họ và Tên:</label>
+          <div id="lblStaffDetailName" style="font-weight:600; font-size:14px; margin-top:4px; padding:6px 12px; background:var(--bg); border-radius:6px; border:1px solid var(--border);">—</div>
+        </div>
+        <div class="form-group" style="margin-bottom:12px;">
+          <label style="font-weight:700;">Email Đăng Nhập:</label>
+          <div id="lblStaffDetailEmail" style="font-family:monospace; font-size:13px; margin-top:4px; padding:6px 12px; background:var(--bg); border-radius:6px; border:1px solid var(--border);">—</div>
+        </div>
+        <div class="form-group" style="margin-bottom:12px;">
+          <label style="font-weight:700;">Số Điện Thoại:</label>
+          <div id="lblStaffDetailPhone" style="font-weight:600; margin-top:4px; padding:6px 12px; background:var(--bg); border-radius:6px; border:1px solid var(--border);">—</div>
+        </div>
+        <div class="form-group" style="margin-bottom:12px;">
+          <label style="font-weight:700;">Vai Trò Phân Quyền:</label>
+          <select id="selectStaffDetailRole" class="field" style="margin-top:4px;">
+            <option value="STAFF">Nhân Viên Bóc Đơn (STAFF) - Chỉ bóc đơn & lên đơn</option>
+            <option value="MANAGER">Quản Lý (MANAGER) - Xem đơn, duyệt đơn & xem khách</option>
+            <option value="VIEWER">Người Xem (VIEWER) - Chỉ xem báo cáo</option>
+          </select>
+        </div>
+        <div class="form-group" style="margin-bottom:16px;">
+          <label style="font-weight:700;">Trạng Thái Hoạt Động:</label>
+          <select id="selectStaffDetailStatus" class="field" style="margin-top:4px;">
+            <option value="active">🟢 Đang hoạt động (Active)</option>
+            <option value="locked">🔴 Khóa tài khoản (Locked)</option>
+          </select>
+        </div>
+        <div style="display:flex; justify-content:flex-end; gap:8px;">
+          <button class="btn btn-secondary" id="btnCancelStaffDetail">Hủy</button>
+          <button class="btn btn-primary" id="btnSaveStaffDetail"><i class="ph ph-check"></i> Cập Nhật Thành Viên</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 6. Account Settings & Security Modal -->
+  <div class="modal-overlay" id="modalAccountSettings" style="display: none;">
+    <div class="modal-box" style="max-width: 440px;">
+      <div style="padding:16px 20px; border-bottom:1px solid var(--border); display:flex; justify-content:space-between; align-items:center;">
+        <h3 style="font-size:15px; font-weight:800; color:var(--primary);"><i class="ph ph-user-circle-gear"></i> Thiết Lập Tài Khoản & Bảo Mật</h3>
+        <button class="btn btn-secondary btn-sm" id="btnCloseAccountSettingsModal" style="border:none;"><i class="ph ph-x text-lg"></i></button>
+      </div>
+      <div style="padding:20px;">
+        <div style="display:flex; border-bottom:1px solid var(--border); margin-bottom:16px; gap:16px;">
+          <button id="tabBtnProfile" style="flex:1; border:none; background:transparent; padding:8px 0; font-weight:700; font-size:13px; color:var(--primary); border-bottom:2px solid var(--primary); cursor:pointer;">Hồ Sơ Cá Nhân</button>
+          <button id="tabBtnPassword" style="flex:1; border:none; background:transparent; padding:8px 0; font-weight:600; font-size:13px; color:var(--text-s); cursor:pointer;">Đổi Mật Khẩu</button>
+        </div>
+
+        <div id="sectProfileSettings" style="display: flex; flex-direction: column; gap:12px;">
+          <div>
+            <label style="font-size:11px; font-weight:700;">Email Tài Khoản (Readonly):</label>
+            <input type="text" id="txtMyAccountEmail" class="field" style="margin-top:4px; font-family:monospace;" readonly>
+          </div>
+          <div>
+            <label style="font-size:11px; font-weight:700;">Họ và Tên Hiển Thị:</label>
+            <input type="text" id="txtMyAccountName" class="field" style="margin-top:4px;" placeholder="Ví dụ: Nguyễn Văn A">
+          </div>
+          <div>
+            <label style="font-size:11px; font-weight:700;">Số Điện Thoại:</label>
+            <input type="text" id="txtMyAccountPhone" class="field" style="margin-top:4px;" placeholder="Ví dụ: 090xxxxxxx">
+          </div>
+          <div style="display:flex; justify-content:flex-end; gap:8px; margin-top:8px;">
+            <button class="btn btn-secondary" id="btnCancelMyProfile">Đóng</button>
+            <button class="btn btn-primary" id="btnSaveMyProfile"><i class="ph ph-floppy-disk"></i> Lưu Hồ Sơ</button>
+          </div>
+        </div>
+
+        <div id="sectPasswordSettings" style="display: none; flex-direction: column; gap:12px;">
+          <div>
+            <label style="font-size:11px; font-weight:700;">Mật Khẩu Mới:</label>
+            <input type="password" id="txtMyNewPassword" class="field" style="margin-top:4px;" placeholder="Tối thiểu 6 ký tự...">
+          </div>
+          <div>
+            <label style="font-size:11px; font-weight:700;">Xác Nhận Mật Khẩu Mới:</label>
+            <input type="password" id="txtMyNewPasswordConfirm" class="field" style="margin-top:4px;" placeholder="Nhập lại mật khẩu mới...">
+          </div>
+          <div id="myPassStrengthContainer" style="font-size:11px; font-weight:700; color:var(--text-s); display:flex; align-items:center; gap:6px;">
+            Độ mạnh: <span id="myPassStrengthLabel" style="color:#EF4444;">Chưa nhập</span>
+          </div>
+          <div style="display:flex; justify-content:flex-end; gap:8px; margin-top:8px;">
+            <button class="btn btn-secondary" id="btnCancelMyPassword">Đóng</button>
+            <button class="btn btn-primary" id="btnSaveMyPassword" style="background:#EF4444; border-color:#EF4444;"><i class="ph ph-key"></i> Đổi Mật Khẩu</button>
+          </div>
         </div>
       </div>
     </div>

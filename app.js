@@ -58,6 +58,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     initEventHandlers();
     initSubmittedOrdersControls();
     initPasswordMeter();
+    initOptimizedFeatures();
 
     // 3. Tải toàn bộ dữ liệu thực từ Supabase
     await loadAllShopData();
@@ -128,6 +129,13 @@ async function checkStrictAuth() {
   const displayName = currentProfile.full_name || currentProfile.email || 'Chủ Shop';
   if (userNameEl) userNameEl.textContent = displayName;
   if (avatarEl) avatarEl.textContent = displayName.slice(0, 2).toUpperCase();
+
+  const dropEmail = document.getElementById('dropdownFullEmail');
+  if (dropEmail) dropEmail.textContent = currentProfile.email || '';
+  const dropShop = document.querySelector('#dropdownShopName span');
+  if (dropShop && typeof ShopService !== 'undefined') {
+    dropShop.textContent = ShopService.getActiveShop()?.name || localStorage.getItem('current_shop_name') || 'Shop Lũa Thủy Sinh';
+  }
 
   // Kiểm tra quyền Master Admin
   let isSysAdmin = false;
@@ -215,6 +223,8 @@ async function fetchShopsList() {
   const activeShopObj = cachedShops.find(s => s.id === activeShopId) || cachedShops[0];
   if (titleEl && activeShopObj) {
     titleEl.textContent = activeShopObj.name.toUpperCase();
+    const dropShop = document.querySelector('#dropdownShopName span');
+    if (dropShop) dropShop.textContent = activeShopObj.name;
   }
   if (sideSubEl && activeShopObj) {
     sideSubEl.textContent = '🏪 ' + activeShopObj.name;
@@ -246,6 +256,8 @@ async function fetchShopsList() {
         if (typeof ShopService !== 'undefined') ShopService.setActiveShop(resolvedActive);
         if (titleEl) titleEl.textContent = resolvedActive.name.toUpperCase();
         if (sideSubEl) sideSubEl.textContent = '🏪 ' + resolvedActive.name;
+        const dropShop = document.querySelector('#dropdownShopName span');
+        if (dropShop) dropShop.textContent = resolvedActive.name;
       }
     }
   } catch (err) {
@@ -262,6 +274,8 @@ async function fetchShopsList() {
       }
       if (titleEl) titleEl.textContent = chosen.name.toUpperCase();
       if (sideSubEl) sideSubEl.textContent = '🏪 ' + chosen.name;
+      const dropShop = document.querySelector('#dropdownShopName span');
+      if (dropShop) dropShop.textContent = chosen.name;
 
       filterAndRenderAll();
       renderShopSettingsForm();
@@ -392,142 +406,50 @@ async function fetchShopStaff() {
     const currentShopObj = currentShops.find(s => s.id === activeShopId) || currentShops[0] || {};
     const targetShopId = currentShopObj.id || null;
 
-    // 1. Query thông tin Chủ sở hữu thực sự của Shop từ profiles
-    let realShopOwner = null;
-    if (currentShopObj.owner_id) {
-      const { data: ownerProf } = await sb.from('profiles').select('id, full_name, email, phone, role').eq('id', currentShopObj.owner_id).maybeSingle();
-      if (ownerProf) realShopOwner = ownerProf;
-    }
+    if (!targetShopId) return;
 
-    // 2. Lấy toàn bộ bản ghi thành viên từ shop_members
-    let queryMembers = sb.from('shop_members').select('id, shop_id, user_id, role, status, created_at');
-    if (targetShopId) {
-      queryMembers = queryMembers.eq('shop_id', targetShopId);
-    }
-    const { data: members, error: memErr } = await queryMembers;
-    let memberList = (!memErr && members) ? members : [];
-
-    // 3. Lấy toàn bộ tài khoản profiles gắn với shop_id này hoặc là owner của shop
-    let queryProfiles = sb.from('profiles').select('id, email, full_name, phone, role, shop_id, created_at');
-    if (targetShopId) {
-      queryProfiles = queryProfiles.or(`shop_id.eq.${targetShopId},id.eq.${currentShopObj.owner_id || 'none'}`);
-    }
-    const { data: directProfiles } = await queryProfiles;
-
-    // 4. Gom danh sách user_id để lấy đầy đủ profiles
-    const userIds = new Set();
-    memberList.forEach(m => { if (m.user_id) userIds.add(m.user_id); });
-    (directProfiles || []).forEach(p => { if (p.id) userIds.add(p.id); });
-    if (currentShopObj.owner_id) userIds.add(currentShopObj.owner_id);
-
-    // Query thêm profiles cho các userIds còn thiếu
-    let profileMap = {};
-    if (userIds.size > 0) {
-      const { data: allFetchedProfiles } = await sb.from('profiles').select('id, email, full_name, phone, role, shop_id, created_at').in('id', Array.from(userIds));
-      (allFetchedProfiles || []).forEach(p => { profileMap[p.id] = p; });
-    }
-    (directProfiles || []).forEach(p => { profileMap[p.id] = p; });
-    if (realShopOwner) profileMap[realShopOwner.id] = realShopOwner;
-
-    // 5. Hợp nhất thành danh sách hoàn chỉnh
-    const uniqueUserMap = new Map();
-
-    // A. Bổ sung từ shop_members
-    memberList.forEach(m => {
-      const p = profileMap[m.user_id] || {};
-      const isOwner = (m.role === 'OWNER' || m.role === 'SHOP_OWNER' || m.user_id === currentShopObj.owner_id);
-      uniqueUserMap.set(m.user_id, {
-        id: m.id || ('mem_' + m.user_id),
-        shop_id: m.shop_id || targetShopId,
+    let memberList = [];
+    if (typeof MemberService !== 'undefined') {
+      const rawMembers = await MemberService.getShopMembers(targetShopId);
+      memberList = rawMembers.map(m => ({
+        id: m.id,
+        shop_id: m.shop_id,
         user_id: m.user_id,
-        role: isOwner ? 'OWNER' : (m.role || p.role || 'STAFF'),
+        role: m.role || 'STAFF',
         status: m.status || 'active',
-        created_at: m.created_at || p.created_at || new Date().toISOString(),
+        created_at: m.created_at,
         profile: {
           id: m.user_id,
-          full_name: p.full_name || '',
-          email: p.email || '',
-          phone: p.phone || '--'
+          full_name: m.profiles?.full_name || m.profile?.full_name || '',
+          email: m.profiles?.email || m.profile?.email || '',
+          phone: m.profiles?.phone || m.profile?.phone || '--'
         }
-      });
-    });
+      }));
+    }
 
-    // B. Bổ sung từ directProfiles
-    (directProfiles || []).forEach(p => {
-      if (!uniqueUserMap.has(p.id)) {
-        const isOwner = p.id === currentShopObj.owner_id || p.role === 'OWNER' || p.role === 'SHOP_OWNER';
-        uniqueUserMap.set(p.id, {
-          id: 'prof_' + p.id,
+    // Đảm bảo Chủ Shop (Owner) thực sự luôn có trong danh sách
+    const hasOwner = memberList.some(m => m.role === 'OWNER' || m.role === 'SHOP_OWNER' || m.user_id === currentShopObj.owner_id);
+    if (!hasOwner && currentShopObj.owner_id) {
+      const { data: ownerProf } = await sb.from('profiles').select('id, full_name, email, phone').eq('id', currentShopObj.owner_id).maybeSingle();
+      if (ownerProf) {
+        memberList.unshift({
+          id: 'owner_' + currentShopObj.owner_id,
           shop_id: targetShopId,
-          user_id: p.id,
-          role: isOwner ? 'OWNER' : (p.role || 'STAFF'),
+          user_id: currentShopObj.owner_id,
+          role: 'OWNER',
           status: 'active',
-          created_at: p.created_at || new Date().toISOString(),
+          created_at: currentShopObj.created_at || new Date().toISOString(),
           profile: {
-            id: p.id,
-            full_name: p.full_name || '',
-            email: p.email || '',
-            phone: p.phone || '--'
+            id: currentShopObj.owner_id,
+            full_name: ownerProf.full_name || 'Chủ Shop',
+            email: ownerProf.email || 'owner@system.com',
+            phone: ownerProf.phone || '0908066466'
           }
         });
       }
-    });
-
-    // C. Đảm bảo Chủ Shop (Owner) thực sự luôn có trong danh sách
-    if (currentShopObj.owner_id && !uniqueUserMap.has(currentShopObj.owner_id)) {
-      const ownerP = realShopOwner || profileMap[currentShopObj.owner_id] || {};
-      uniqueUserMap.set(currentShopObj.owner_id, {
-        id: 'owner_' + currentShopObj.owner_id,
-        shop_id: targetShopId,
-        user_id: currentShopObj.owner_id,
-        role: 'OWNER',
-        status: 'active',
-        created_at: currentShopObj.created_at || new Date().toISOString(),
-        profile: {
-          id: currentShopObj.owner_id,
-          full_name: ownerP.full_name || 'Văn Tài',
-          email: ownerP.email || 'tai@luathuysinh.vn',
-          phone: ownerP.phone || '0908066466'
-        }
-      });
     }
 
-    const mergedList = Array.from(uniqueUserMap.values());
-
-    allStaffMembers = mergedList.map((m, idx) => {
-      const p = m.profile || {};
-      const isOwner = m.role === 'OWNER' || m.role === 'SHOP_OWNER' || m.user_id === currentShopObj.owner_id;
-
-      let finalName = p.full_name || '';
-      let finalEmail = p.email || '';
-      let finalPhone = p.phone || '';
-
-      if (!finalName) {
-        if (isOwner && realShopOwner) {
-          finalName = realShopOwner.full_name || realShopOwner.email?.split('@')[0] || 'Văn Tài';
-          finalEmail = realShopOwner.email || 'tai@luathuysinh.vn';
-          finalPhone = realShopOwner.phone || '0908066466';
-        } else if (isOwner) {
-          finalName = (currentShopObj.name && currentShopObj.name.includes('Yến')) ? 'Chủ Shop (Yến Lũa)' : 'Văn Tài';
-          finalEmail = (currentShopObj.name && currentShopObj.name.includes('Yến')) ? 'admin@luathuysinh.vn' : 'tai@luathuysinh.vn';
-          finalPhone = '0908066466';
-        } else {
-          finalName = p.email ? p.email.split('@')[0] : `Nhân Viên ${idx + 1}`;
-          finalEmail = p.email || '--';
-          finalPhone = p.phone || '--';
-        }
-      }
-
-      return {
-        ...m,
-        profile: {
-          id: m.user_id,
-          full_name: finalName,
-          email: finalEmail,
-          phone: finalPhone || '--'
-        }
-      };
-    });
+    allStaffMembers = memberList;
 
     // Sắp xếp: Chủ Shop lên đầu bảng, tiếp theo là Quản lý, sau đó là Nhân viên
     allStaffMembers.sort((a, b) => {
@@ -545,9 +467,18 @@ async function fetchShopStaff() {
 async function fetchShopDevices() {
   if (!sb) return;
   try {
-    const { data } = await sb.from('shop_devices').select('*').order('last_active_at', { ascending: false });
+    const userIds = allStaffMembers.map(m => m.user_id).filter(Boolean);
+    if (userIds.length === 0) {
+      allDevices = [];
+      return;
+    }
+    const { data } = await sb.from('extension_devices')
+      .select('*')
+      .in('user_id', userIds)
+      .order('last_active_at', { ascending: false });
     allDevices = data || [];
   } catch (err) {
+    console.warn('[Devices] Lỗi tải danh sách thiết bị:', err);
     allDevices = [];
   }
 }
@@ -1043,6 +974,20 @@ function renderSubmittedOrdersList() {
       else selectedSubmittedIds.delete(e.target.value);
     });
   });
+
+  // Bind click event on tr to show order details (ignore checkbox/buttons)
+  tbody.querySelectorAll('tr').forEach(tr => {
+    tr.style.cursor = 'pointer';
+    tr.addEventListener('click', (e) => {
+      if (e.target.closest('input[type="checkbox"]') || e.target.closest('button') || e.target.closest('a') || e.target.closest('.sub-checkbox')) {
+        return;
+      }
+      const orderId = tr.getAttribute('data-id');
+      if (orderId) {
+        window.openOrderDetailsModal(orderId);
+      }
+    });
+  });
 }
 
 // ─── 5. RENDER CUSTOMERS & BLACKLIST ────────────────────────────────────
@@ -1063,7 +1008,7 @@ function renderCustomersTable() {
   }
 
   if (list.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center; padding:20px; color:var(--text-s);">Chưa có dữ liệu khách hàng trong Database.</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="7" style="text-align:center; padding:20px; color:var(--text-s);">Chưa có dữ liệu khách hàng trong Database.</td></tr>';
     return;
   }
 
@@ -1076,12 +1021,24 @@ function renderCustomersTable() {
 
     return `
       <tr>
-        <td><strong>${escapeHtml(c.name || 'Khách Vãng Lai')}</strong></td>
+        <td>
+          <a href="#" onclick="window.openCustomerDetailModal('${escapeHtml(c.phone)}'); return false;" style="font-weight:700; color:var(--primary); text-decoration:underline;">
+            ${escapeHtml(c.name || 'Khách Vãng Lai')}
+          </a>
+        </td>
         <td><code>${escapeHtml(c.phone)}</code></td>
         <td style="max-width:220px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;" title="${escapeHtml(c.address)}">${escapeHtml(c.address || '--')}</td>
         <td><strong>${c.total_orders || 1} đơn</strong></td>
         <td><strong style="color:#10B981;">${formatCurrency(c.total_cod)}</strong></td>
         <td>${badgeHtml}</td>
+        <td style="text-align:center;">
+          <div style="display:flex; justify-content:center; gap:4px;">
+            <button class="btn btn-secondary btn-sm" onclick="window.openCustomerDetailModal('${escapeHtml(c.phone)}')" title="Xem & Chỉnh sửa"><i class="ph ph-pencil-simple"></i> Sửa</button>
+            <button class="btn btn-secondary btn-sm" style="color:${isBlack ? '#10B981' : '#EF4444'};" onclick="window.toggleCustomerBlacklist('${escapeHtml(c.phone)}', ${isBlack})" title="${isBlack ? 'Gỡ khỏi Blacklist' : 'Cho vào Blacklist'}">
+              <i class="ph ${isBlack ? 'ph-check-circle' : 'ph-warning-octagon'}"></i> ${isBlack ? 'Gỡ' : 'Chặn'}
+            </button>
+          </div>
+        </td>
       </tr>
     `;
   }).join('');
@@ -1209,7 +1166,7 @@ function renderStaffTable() {
               ${avatarChar}
             </div>
             <div>
-              <strong>${escapeHtml(p.full_name || 'Nhân viên')}</strong>
+              <strong><a href="#" onclick="window.openStaffDetailModal('${m.id}'); return false;" style="color:var(--primary); text-decoration:underline;">${escapeHtml(p.full_name || 'Nhân viên')}</a></strong>
             </div>
           </div>
         </td>
@@ -1224,9 +1181,8 @@ function renderStaffTable() {
             <span style="font-size:11px; color:var(--text-s); font-weight:700;">Tài khoản gốc</span>
           ` : `
             <div style="display:flex; gap:4px;">
-              <button class="btn btn-secondary btn-sm" onclick="promptChangeStaffRole('${m.id}', '${roleCode}')" title="Phân quyền & Vai trò"><i class="ph ph-shield"></i></button>
-              <button class="btn btn-secondary btn-sm" onclick="promptResetStaffPassword('${m.user_id}', '${p.email}')" title="Đổi mật khẩu"><i class="ph ph-key"></i></button>
-              <button class="btn btn-secondary btn-sm" style="color:#EF4444;" onclick="deleteStaffMember('${m.id}')" title="Xóa khỏi shop"><i class="ph ph-trash"></i></button>
+              <button class="btn btn-secondary btn-sm" onclick="window.openStaffDetailModal('${m.id}')" title="Xem & Chỉnh sửa"><i class="ph ph-pencil-simple"></i> Sửa</button>
+              <button class="btn btn-secondary btn-sm" style="color:#EF4444;" onclick="deleteStaffMember('${m.id}')" title="Xóa khỏi shop"><i class="ph ph-trash"></i> Xóa</button>
             </div>
           `}
         </td>
@@ -1288,19 +1244,27 @@ function renderDevicesTable() {
     return;
   }
 
-  tbody.innerHTML = allDevices.map(d => `
-    <tr>
-      <td><strong><i class="ph ph-laptop"></i> ${escapeHtml(d.device_name || 'Chrome Extension')}</strong></td>
-      <td><code>${escapeHtml(d.ip_address || '127.0.0.1')}</code></td>
-      <td>${d.last_active_at ? new Date(d.last_active_at).toLocaleString('vi-VN') : 'Vừa xong'}</td>
-      <td><span class="status-online">Đang kết nối</span></td>
-      <td>
-        <button class="btn btn-secondary btn-sm" style="color:#EF4444;" onclick="revokeDeviceSession('${d.id}')">
+  tbody.innerHTML = allDevices.map(d => {
+    const isRevoked = d.revoked === true || d.revoked === 'true';
+    const statusBadge = isRevoked 
+      ? '<span class="status-offline" style="background:#FEE2E2; color:#EF4444; border:1px solid #FCA5A5; font-size:10.5px; padding:2px 6px;">Bị ngắt</span>'
+      : '<span class="status-online">Đang kết nối</span>';
+    const actionButton = isRevoked 
+      ? '<span style="font-size:11.5px; color:var(--text-s); font-weight:700;">Đã ngắt</span>'
+      : `<button class="btn btn-secondary btn-sm" style="color:#EF4444;" onclick="revokeDeviceSession('${d.id}')">
           <i class="ph ph-power"></i> Ngắt kết nối
-        </button>
-      </td>
-    </tr>
-  `).join('');
+        </button>`;
+
+    return `
+      <tr>
+        <td><strong><i class="ph ph-laptop"></i> ${escapeHtml(d.device_name || 'Chrome Extension')}</strong></td>
+        <td><code>${escapeHtml(d.ip_address || '127.0.0.1')}</code></td>
+        <td>${d.last_active_at ? new Date(d.last_active_at).toLocaleString('vi-VN') : 'Vừa xong'}</td>
+        <td>${statusBadge}</td>
+        <td>${actionButton}</td>
+      </tr>
+    `;
+  }).join('');
 }
 
 // ─── 9. RENDER SUBSCRIPTION TAB ─────────────────────────────────────────
@@ -2031,9 +1995,9 @@ window.revokeDeviceSession = async function(devId) {
   if (!confirm('Xác nhận ngắt kết nối thiết bị này?')) return;
   try {
     if (sb) {
-      await sb.from('shop_devices').delete().eq('id', devId);
+      await sb.from('extension_devices').update({ revoked: true }).eq('id', devId);
     }
-    allDevices = allDevices.filter(d => d.id !== devId);
+    allDevices = allDevices.map(d => d.id === devId ? { ...d, revoked: true } : d);
     renderDevicesTable();
     alert('Đã ngắt kết nối phiên làm việc của thiết bị thành công!');
   } catch (err) {
@@ -2172,3 +2136,410 @@ window.stopImpersonation = function() {
   alert('Đã thoát trạng thái hóa thân. Đang tải lại dữ liệu...');
   window.location.reload();
 };
+
+function switchMainTab(tabName) {
+  const tabs = document.querySelectorAll('.nav-item');
+  const contents = document.querySelectorAll('.tab-content');
+  tabs.forEach(t => t.classList.remove('active'));
+  contents.forEach(c => c.classList.remove('active'));
+
+  const activeTab = Array.from(tabs).find(t => t.getAttribute('data-tab') === tabName);
+  if (activeTab) activeTab.classList.add('active');
+
+  const targetContent = document.getElementById(`tab-${tabName}`);
+  if (targetContent) targetContent.classList.add('active');
+}
+
+function initOptimizedFeatures() {
+  // --- 1. USER PROFILE DROPDOWN TOGGLE ---
+  const pill = document.getElementById('topbarUserPill');
+  const dropdown = document.getElementById('topbarUserDropdown');
+
+  if (pill && dropdown) {
+    pill.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const isVisible = dropdown.style.display === 'block';
+      dropdown.style.display = isVisible ? 'none' : 'block';
+    });
+
+    document.addEventListener('click', (e) => {
+      if (!pill.contains(e.target) && !dropdown.contains(e.target)) {
+        dropdown.style.display = 'none';
+      }
+    });
+  }
+
+  // --- 2. DROPDOWN ACTIONS ---
+  const modalAccount = document.getElementById('modalAccountSettings');
+  const tabBtnProfile = document.getElementById('tabBtnProfile');
+  const tabBtnPassword = document.getElementById('tabBtnPassword');
+  const sectProfile = document.getElementById('sectProfileSettings');
+  const sectPassword = document.getElementById('sectPasswordSettings');
+
+  const showAccountTab = (tabName) => {
+    if (tabName === 'profile') {
+      tabBtnProfile.style.color = 'var(--primary)';
+      tabBtnProfile.style.borderBottom = '2px solid var(--primary)';
+      tabBtnPassword.style.color = 'var(--text-s)';
+      tabBtnPassword.style.borderBottom = 'none';
+      sectProfile.style.display = 'flex';
+      sectPassword.style.display = 'none';
+    } else {
+      tabBtnPassword.style.color = 'var(--primary)';
+      tabBtnPassword.style.borderBottom = '2px solid var(--primary)';
+      tabBtnProfile.style.color = 'var(--text-s)';
+      tabBtnProfile.style.borderBottom = 'none';
+      sectProfile.style.display = 'none';
+      sectPassword.style.display = 'flex';
+    }
+  };
+
+  document.getElementById('btnDropdownProfile')?.addEventListener('click', () => {
+    if (dropdown) dropdown.style.display = 'none';
+    if (modalAccount) {
+      // Load current profile fields
+      document.getElementById('txtMyAccountEmail').value = currentProfile?.email || '';
+      document.getElementById('txtMyAccountName').value = currentProfile?.full_name || '';
+      document.getElementById('txtMyAccountPhone').value = currentProfile?.phone || '';
+      showAccountTab('profile');
+      openModalEl(modalAccount);
+    }
+  });
+
+  document.getElementById('btnDropdownPassword')?.addEventListener('click', () => {
+    if (dropdown) dropdown.style.display = 'none';
+    if (modalAccount) {
+      document.getElementById('txtMyNewPassword').value = '';
+      document.getElementById('txtMyNewPasswordConfirm').value = '';
+      document.getElementById('myPassStrengthLabel').textContent = 'Chưa nhập';
+      document.getElementById('myPassStrengthLabel').style.color = '#EF4444';
+      showAccountTab('password');
+      openModalEl(modalAccount);
+    }
+  });
+
+  // Tab switching inside Account Settings modal
+  tabBtnProfile?.addEventListener('click', () => showAccountTab('profile'));
+  tabBtnPassword?.addEventListener('click', () => showAccountTab('password'));
+
+  // Close Account modal
+  const closeAccountModal = () => closeModalEl(modalAccount);
+  document.getElementById('btnCloseAccountSettingsModal')?.addEventListener('click', closeAccountModal);
+  document.getElementById('btnCancelMyProfile')?.addEventListener('click', closeAccountModal);
+  document.getElementById('btnCancelMyPassword')?.addEventListener('click', closeAccountModal);
+
+  // Save Account Profile
+  document.getElementById('btnSaveMyProfile')?.addEventListener('click', async () => {
+    const newName = document.getElementById('txtMyAccountName').value.trim();
+    const newPhone = document.getElementById('txtMyAccountPhone').value.trim();
+    if (!newName) return alert('Họ tên không được để trống!');
+    
+    try {
+      if (sb && currentProfile?.id) {
+        await sb.from('profiles').update({ full_name: newName, phone: newPhone }).eq('id', currentProfile.id);
+        currentProfile.full_name = newName;
+        currentProfile.phone = newPhone;
+        
+        // Sync Topbar Name
+        const userNameEl = document.getElementById('topbarUserName');
+        if (userNameEl) userNameEl.textContent = newName;
+        
+        alert('Cập nhật hồ sơ tài khoản thành công!');
+        closeModalEl(modalAccount);
+      }
+    } catch (err) {
+      alert('Lỗi cập nhật hồ sơ: ' + err.message);
+    }
+  });
+
+  // Save Password
+  document.getElementById('btnSaveMyPassword')?.addEventListener('click', async () => {
+    const newPass = document.getElementById('txtMyNewPassword').value;
+    const confirmPass = document.getElementById('txtMyNewPasswordConfirm').value;
+    if (!newPass) return alert('Vui lòng nhập mật khẩu mới!');
+    if (newPass !== confirmPass) return alert('Xác nhận mật khẩu không trùng khớp!');
+    if (newPass.length < 6) return alert('Mật khẩu phải dài tối thiểu 6 ký tự!');
+
+    try {
+      if (sb) {
+        const { error } = await sb.auth.updateUser({ password: newPass });
+        if (error) throw error;
+        alert('Đổi mật khẩu tài khoản thành công!');
+        closeModalEl(modalAccount);
+      }
+    } catch (err) {
+      alert('Lỗi đổi mật khẩu: ' + err.message);
+    }
+  });
+
+  // Password strength meter
+  document.getElementById('txtMyNewPassword')?.addEventListener('input', (e) => {
+    const val = e.target.value;
+    const lbl = document.getElementById('myPassStrengthLabel');
+    if (!lbl) return;
+    if (!val) {
+      lbl.textContent = 'Chưa nhập';
+      lbl.style.color = '#EF4444';
+    } else if (val.length < 6) {
+      lbl.textContent = 'Yếu (Tối thiểu 6 ký tự)';
+      lbl.style.color = '#EF4444';
+    } else if (val.length < 10) {
+      lbl.textContent = 'Trung bình';
+      lbl.style.color = '#F59E0B';
+    } else {
+      lbl.textContent = 'Mạnh';
+      lbl.style.color = '#10B981';
+    }
+  });
+
+  document.getElementById('btnDropdownDevices')?.addEventListener('click', () => {
+    if (dropdown) dropdown.style.display = 'none';
+    switchMainTab('devices');
+  });
+
+  document.getElementById('btnDropdownLogout')?.addEventListener('click', () => {
+    if (dropdown) dropdown.style.display = 'none';
+    document.getElementById('btnSidebarLogout')?.click();
+  });
+
+  // --- 3. SUBTABS TOGGLE IN SETTINGS ---
+  const btnSubTabGeneral = document.getElementById('btnSubTabGeneral');
+  const btnSubTabAiPrompt = document.getElementById('btnSubTabAiPrompt');
+  const sectSettingsGeneral = document.getElementById('sectSettingsGeneral');
+  const sectSettingsAiPrompt = document.getElementById('sectSettingsAiPrompt');
+
+  if (btnSubTabGeneral && btnSubTabAiPrompt) {
+    btnSubTabGeneral.addEventListener('click', () => {
+      btnSubTabGeneral.style.color = 'var(--primary)';
+      btnSubTabGeneral.style.borderBottom = '2px solid var(--primary)';
+      btnSubTabGeneral.style.fontWeight = '700';
+
+      btnSubTabAiPrompt.style.color = 'var(--text-s)';
+      btnSubTabAiPrompt.style.borderBottom = 'none';
+      btnSubTabAiPrompt.style.fontWeight = '600';
+
+      if (sectSettingsGeneral) sectSettingsGeneral.style.display = 'grid';
+      if (sectSettingsAiPrompt) sectSettingsAiPrompt.style.display = 'none';
+    });
+
+    btnSubTabAiPrompt.addEventListener('click', () => {
+      btnSubTabAiPrompt.style.color = 'var(--primary)';
+      btnSubTabAiPrompt.style.borderBottom = '2px solid var(--primary)';
+      btnSubTabAiPrompt.style.fontWeight = '700';
+
+      btnSubTabGeneral.style.color = 'var(--text-s)';
+      btnSubTabGeneral.style.borderBottom = 'none';
+      btnSubTabGeneral.style.fontWeight = '600';
+
+      if (sectSettingsGeneral) sectSettingsGeneral.style.display = 'none';
+      if (sectSettingsAiPrompt) sectSettingsAiPrompt.style.display = 'block';
+    });
+  }
+
+  // --- 4. ORDER DETAILS MODAL CONTROLLER ---
+  const modalOrderDetails = document.getElementById('modalOrderDetails');
+  
+  window.openOrderDetailsModal = function(orderId) {
+    const o = filteredSubmittedOrders.find(item => item.id === orderId) || allSubmittedOrders.find(item => item.id === orderId);
+    if (!o) return;
+
+    document.getElementById('lblDetailOrderId').textContent = o.order_code || o.orderCode || '—';
+    document.getElementById('lblDetailTrackingCode').textContent = o.tracking_code || o.trackingCode || 'Chưa cấp mã';
+    document.getElementById('lblDetailCustName').textContent = o.name || o.customer_name || '—';
+    document.getElementById('lblDetailCustPhone').textContent = o.phone || '—';
+    document.getElementById('lblDetailCustAddress').textContent = o.address || '—';
+    
+    const isJt = (o.platform || o.carrier || '').toLowerCase().includes('jt');
+    document.getElementById('lblDetailCarrier').textContent = isJt ? 'J&T Express' : 'VNPost';
+    document.getElementById('lblDetailCodAmount').textContent = formatCurrency(o.cod_amount || o.codAmount);
+    document.getElementById('lblDetailWeight').textContent = o.weight ? (o.weight + ' g') : '—';
+    document.getElementById('lblDetailProductNote').textContent = o.product_note || o.productNote || '—';
+    
+    document.getElementById('lblDetailDeviceName').textContent = o.device_name || o.deviceName || 'Máy chính';
+    document.getElementById('lblDetailSubmittedAt').textContent = o.submitted_at ? new Date(o.submitted_at).toLocaleString('vi-VN') : '—';
+    document.getElementById('lblDetailUserEmail').textContent = o.user_email || '—';
+
+    // Store current order object on window for copy button
+    window.currentDetailOrder = o;
+    openModalEl(modalOrderDetails);
+  };
+
+  const closeOrderDetails = () => closeModalEl(modalOrderDetails);
+  document.getElementById('btnCloseOrderDetailsModal')?.addEventListener('click', closeOrderDetails);
+  document.getElementById('btnDetailClose')?.addEventListener('click', closeOrderDetails);
+
+  document.getElementById('btnDetailCopyAll')?.addEventListener('click', () => {
+    const o = window.currentDetailOrder;
+    if (!o) return;
+    const text = `Mã đơn hàng: ${o.order_code || o.orderCode || ''}
+Mã vận đơn: ${o.tracking_code || o.trackingCode || 'Chưa cấp mã'}
+Người nhận: ${o.name || ''} - ${o.phone || ''}
+Địa chỉ: ${o.address || ''}
+Bưu cục: ${(o.platform || o.carrier || '').includes('jt') ? 'J&T Express' : 'VNPost'}
+COD: ${formatCurrency(o.cod_amount || o.codAmount)}
+Sản phẩm / Ghi chú: ${o.product_note || o.productNote || ''}`;
+    
+    navigator.clipboard.writeText(text)
+      .then(() => alert('Đã sao chép toàn bộ thông tin đơn hàng!'))
+      .catch(() => alert('Lỗi sao chép thông tin.'));
+  });
+
+  // --- 5. CUSTOMER DETAIL MODAL CONTROLLER (CRM) ---
+  const modalCustDetail = document.getElementById('modalCustomerDetail');
+
+  window.openCustomerDetailModal = function(phone) {
+    // Find customer object
+    const c = allCustomers.find(item => item.phone === phone);
+    if (!c) return;
+
+    document.getElementById('txtCustDetailName').value = c.name || '';
+    document.getElementById('txtCustDetailPhone').value = c.phone || '';
+    document.getElementById('txtCustDetailAddress').value = c.address || '';
+    document.getElementById('selectCustDetailSegment').value = c.segment || 'Thành viên';
+    document.getElementById('txtCustDetailNotes').value = c.notes || '';
+
+    // History & COD totals
+    const customerOrders = allSubmittedOrders.filter(o => o.phone === phone);
+    const totalCod = customerOrders.reduce((sum, o) => sum + (Number(o.cod_amount || o.codAmount) || 0), 0);
+    
+    document.getElementById('lblCustDetailTotalCod').textContent = formatCurrency(totalCod);
+    document.getElementById('lblCustDetailTotalOrders').textContent = `${customerOrders.length} đơn`;
+
+    // Render history
+    const tbody = document.getElementById('tbodyCustDetailOrders');
+    if (tbody) {
+      if (customerOrders.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="5" style="text-align:center; color:var(--text-s);">Chưa có đơn hàng nào đẩy từ hệ thống.</td></tr>';
+      } else {
+        tbody.innerHTML = customerOrders.map(o => {
+          const date = o.submitted_at ? new Date(o.submitted_at).toLocaleDateString('vi-VN') : '—';
+          const tracking = o.tracking_code || o.trackingCode || 'Chờ cấp mã';
+          const cod = formatCurrency(o.cod_amount || o.codAmount);
+          const carrier = (o.platform || o.carrier || '').toLowerCase().includes('jt') ? 'J&T' : 'VNPost';
+          return `
+            <tr>
+              <td>${date}</td>
+              <td><code style="font-weight:700;">${escapeHtml(tracking)}</code></td>
+              <td>${escapeHtml(o.product_note || o.productNote || '—')}</td>
+              <td style="color:#10B981; font-weight:700;">${cod}</td>
+              <td>${carrier}</td>
+            </tr>
+          `;
+        }).join('');
+      }
+    }
+
+    openModalEl(modalCustDetail);
+  };
+
+  const closeCustDetail = () => closeModalEl(modalCustDetail);
+  document.getElementById('btnCloseCustomerDetailModal')?.addEventListener('click', closeCustDetail);
+  document.getElementById('btnCancelCustDetail')?.addEventListener('click', closeCustDetail);
+
+  // Save Customer
+  document.getElementById('btnSaveCustDetail')?.addEventListener('click', async () => {
+    const name = document.getElementById('txtCustDetailName').value.trim();
+    const phone = document.getElementById('txtCustDetailPhone').value.trim();
+    const address = document.getElementById('txtCustDetailAddress').value.trim();
+    const segment = document.getElementById('selectCustDetailSegment').value;
+    const notes = document.getElementById('txtCustDetailNotes').value.trim();
+
+    try {
+      if (sb) {
+        // Upsert customer info
+        await sb.from('customers').upsert({
+          phone: phone,
+          shop_id: activeShopId,
+          name: name,
+          address: address,
+          segment: segment,
+          notes: notes
+        });
+        
+        // Refresh customer list
+        await aggregateCustomersData();
+        renderCustomersTable();
+        alert('Cập nhật thông tin khách hàng thành công!');
+        closeModalEl(modalCustDetail);
+      }
+    } catch (err) {
+      alert('Lỗi cập nhật: ' + err.message);
+    }
+  });
+
+  // Blacklist Toggle
+  window.toggleCustomerBlacklist = async function(phone, currentIsBlacklist) {
+    const actionText = currentIsBlacklist ? 'gỡ khỏi Blacklist' : 'đưa vào Blacklist';
+    if (!confirm(`Xác nhận ${actionText} số điện thoại ${phone}?`)) return;
+
+    try {
+      if (sb) {
+        const nextSegment = currentIsBlacklist ? 'Thành viên' : 'Blacklist';
+        await sb.from('customers').upsert({
+          phone: phone,
+          shop_id: activeShopId,
+          segment: nextSegment
+        });
+        await aggregateCustomersData();
+        renderCustomersTable();
+        alert(`Đã ${actionText} thành công!`);
+      }
+    } catch (err) {
+      alert('Lỗi: ' + err.message);
+    }
+  };
+
+  // --- 6. STAFF DETAIL & EDIT MODAL CONTROLLER ---
+  const modalStaffDetail = document.getElementById('modalStaffDetail');
+
+  window.openStaffDetailModal = function(memberId) {
+    const m = allStaffMembers.find(item => item.id === memberId);
+    if (!m) return;
+
+    document.getElementById('txtStaffDetailMemberId').value = m.id;
+    document.getElementById('lblStaffDetailName').textContent = m.profile?.full_name || 'Nhân viên';
+    document.getElementById('lblStaffDetailEmail').textContent = m.profile?.email || '—';
+    document.getElementById('lblStaffDetailPhone').textContent = m.profile?.phone || '—';
+    document.getElementById('selectStaffDetailRole').value = m.role || 'STAFF';
+    document.getElementById('selectStaffDetailStatus').value = m.status || 'active';
+
+    openModalEl(modalStaffDetail);
+  };
+
+  const closeStaffDetail = () => closeModalEl(modalStaffDetail);
+  document.getElementById('btnCloseStaffDetailModal')?.addEventListener('click', closeStaffDetail);
+  document.getElementById('btnCancelStaffDetail')?.addEventListener('click', closeStaffDetail);
+
+  // Save Staff Detail
+  document.getElementById('btnSaveStaffDetail')?.addEventListener('click', async () => {
+    const memberId = document.getElementById('txtStaffDetailMemberId').value;
+    const role = document.getElementById('selectStaffDetailRole').value;
+    const status = document.getElementById('selectStaffDetailStatus').value;
+
+    try {
+      if (sb) {
+        // If it starts with 'owner_', it's the owner account which shouldn't be edited this way
+        if (memberId.startsWith('owner_')) {
+          alert('Không thể chỉnh sửa tài khoản Chủ Shop gốc!');
+          return;
+        }
+
+        // Update role and status in shop_members table
+        await sb.from('shop_members').update({ role: role, status: status }).eq('id', memberId);
+        
+        // Also update role in profiles table to keep in sync
+        const m = allStaffMembers.find(item => item.id === memberId);
+        if (m && m.user_id) {
+          await sb.from('profiles').update({ role: role, status: status }).eq('id', m.user_id);
+        }
+
+        await fetchShopStaff();
+        renderStaffTable();
+        alert('Cập nhật vai trò & trạng thái thành công!');
+        closeModalEl(modalStaffDetail);
+      }
+    } catch (err) {
+      alert('Lỗi cập nhật thành viên: ' + err.message);
+    }
+  });
+}
