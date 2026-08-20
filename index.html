@@ -808,6 +808,17 @@
                 <input type="text" id="cfgBankAccountHolder" class="field" placeholder="Ví dụ: NGUYEN VAN TAI" style="margin-top:4px;">
               </div>
             </div>
+
+            <!-- AI Prompt Rules -->
+            <div class="card">
+              <h3 style="font-size:14px; font-weight:700; margin-bottom:12px;"><i class="ph ph-brain text-indigo-500"></i> Quy Tắc Prompt AI Riêng Của Shop</h3>
+              <p style="font-size:11px; color:var(--text-s); margin-bottom:10px;">
+                Cấu hình quy tắc bóc tách đơn hàng bằng AI riêng cho shop của bạn (Ví dụ: Ưu tiên bóc tách tên phụ, bỏ qua SĐT phụ...).
+              </p>
+              <div class="form-group">
+                <textarea id="cfgCustomPromptRules" class="field" style="height:80px; resize:vertical;" placeholder="Ví dụ: Lấy tên trong ngoặc đơn nếu có, mặc định note là 'Cho xem hàng'..."></textarea>
+              </div>
+            </div>
           </div>
         </div>
       </section>
@@ -1061,6 +1072,8 @@ Anh gửi cho em cây kim quýt về 128 Lê Văn Sỹ, P10, Phú Nhuận, HCM n
   <script src="auth.session.js"></script>
   <script src="auth.service.js"></script>
   <script src="shops-service.js"></script>
+  <script src="member.service.js"></script>
+  <script src="orders.service.js"></script>
   <script src="storage.js"></script>
   <script src="app.js"></script>
 </body>

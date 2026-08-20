@@ -382,6 +382,9 @@ document.addEventListener('DOMContentLoaded', async () => {
               </span>
             </td>
             <td style="text-align: center;">
+              <button onclick="window.startAdminImpersonate('${s.id}', '${escapeHtml(s.name)}')" class="btn btn-sm btn-secondary" style="margin-right: 4px; color: #D97706; border-color: #FCD34D;" ${isDeleted ? 'disabled' : ''} title="Hóa thân hỗ trợ kỹ thuật">
+                <i class="ph ph-mask-happy"></i> Hóa thân
+              </button>
               <button onclick="window.openEditShopModal('${s.id}')" class="btn btn-sm btn-primary" style="margin-right: 4px;" ${isDeleted ? 'disabled' : ''}>
                 <i class="ph ph-pencil"></i> Sửa
               </button>
@@ -438,9 +441,10 @@ document.addEventListener('DOMContentLoaded', async () => {
 
       if (duplicateIds.length === 0) {
         alert('✅ Hệ thống không phát hiện Shop nào bị trùng lặp!');
-      } else {
         // 3. Xóa các shop trùng lặp
-        await sb.from('shop_members').delete().in('shop_id', duplicateIds).catch(() => {});
+        try {
+          await sb.from('shop_members').delete().in('shop_id', duplicateIds);
+        } catch (_) {}
         const { error } = await sb.from('shops').delete().in('id', duplicateIds);
         if (error) throw error;
 
@@ -805,6 +809,36 @@ document.addEventListener('DOMContentLoaded', async () => {
       editShopName.value = shop.name;
       editShopStatus.value = shop.status || 'active';
       await loadUserDropdown(editShopOwner, shop.owner_id);
+
+      // Fetch shop quotas
+      try {
+        const { data: quota } = await sb
+          .from('shop_quotas')
+          .select('max_devices, max_users, daily_ai_limit, monthly_order_limit')
+          .eq('shop_id', shopId)
+          .maybeSingle();
+
+        document.getElementById('edit-shop-max-devices').value = quota ? (quota.max_devices ?? 5) : 5;
+        document.getElementById('edit-shop-max-users').value = quota ? (quota.max_users ?? 5) : 5;
+        document.getElementById('edit-shop-daily-ai').value = quota ? (quota.daily_ai_limit ?? 500) : 500;
+        document.getElementById('edit-shop-monthly-order').value = quota ? (quota.monthly_order_limit ?? 5000) : 5000;
+      } catch (quotaErr) {
+        console.warn('Quota fetch error:', quotaErr);
+      }
+
+      // Fetch custom prompt rules
+      try {
+        const { data: flags } = await sb
+          .from('shop_feature_flags')
+          .select('custom_prompt_rules')
+          .eq('shop_id', shopId)
+          .maybeSingle();
+
+        document.getElementById('edit-shop-custom-prompt').value = flags ? (flags.custom_prompt_rules || '') : '';
+      } catch (flagsErr) {
+        console.warn('Feature flags fetch error:', flagsErr);
+      }
+
       await loadShopMembers(shopId);
     } catch (err) {
       console.error(err);
@@ -840,6 +874,29 @@ document.addEventListener('DOMContentLoaded', async () => {
           p_shop_id: id, p_user_id: ownerId, p_role: 'SHOP_OWNER'
         });
       }
+
+      // Save shop quotas
+      const maxDevices = parseInt(document.getElementById('edit-shop-max-devices').value, 10) || 5;
+      const maxUsers = parseInt(document.getElementById('edit-shop-max-users').value, 10) || 5;
+      const dailyAi = parseInt(document.getElementById('edit-shop-daily-ai').value, 10) || 500;
+      const monthlyOrder = parseInt(document.getElementById('edit-shop-monthly-order').value, 10) || 5000;
+      const customPrompt = document.getElementById('edit-shop-custom-prompt').value.trim();
+
+      const { error: quotaSaveErr } = await sb.from('shop_quotas').upsert({
+        shop_id: id,
+        max_devices: maxDevices,
+        max_users: maxUsers,
+        daily_ai_limit: dailyAi,
+        monthly_order_limit: monthlyOrder
+      }, { onConflict: 'shop_id' });
+      if (quotaSaveErr) throw quotaSaveErr;
+
+      // Save custom prompt rules
+      const { error: flagsSaveErr } = await sb.from('shop_feature_flags').upsert({
+        shop_id: id,
+        custom_prompt_rules: customPrompt
+      }, { onConflict: 'shop_id' });
+      if (flagsSaveErr) throw flagsSaveErr;
 
       alert('Đã lưu thông tin shop!');
       loadShops();
@@ -1041,6 +1098,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   let loadedGroqKeys = [];
   let loadedBlacklistPhones = [];
   let loadedAiPrompt = '';
+  let loadedDefaultCustomRules = '';
   let groqKeysBackup = [];
   let blacklistBackup = [];
 
@@ -1059,7 +1117,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   function renderPromptView() {
     const container = document.getElementById('view-ai-prompt');
     if (!container) return;
-    container.textContent = loadedAiPrompt || 'Chưa có AI Prompt mặc định';
+    container.innerHTML = `<strong>Prompt gốc:</strong>\n${escapeHtml(loadedAiPrompt) || 'Chưa thiết lập'}\n\n<strong>Quy tắc tùy chọn mặc định (Fallback):</strong>\n${escapeHtml(loadedDefaultCustomRules) || 'Chưa thiết lập'}`;
   }
 
   function renderGroqKeys() {
@@ -1144,6 +1202,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     document.getElementById('edit-ai-prompt')?.classList.remove('hidden');
     const ta = document.getElementById('textarea-default-prompt');
     if (ta) ta.value = loadedAiPrompt;
+    const taCustom = document.getElementById('textarea-default-custom-rules');
+    if (taCustom) taCustom.value = loadedDefaultCustomRules;
   }
   function showViewAiPrompt() {
     document.getElementById('edit-ai-prompt')?.classList.add('hidden');
@@ -1210,12 +1270,15 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (!sb) return;
     try {
       const promptVal = document.getElementById('textarea-default-prompt')?.value || '';
+      const customRulesVal = document.getElementById('textarea-default-custom-rules')?.value || '';
       await sb.from('system_configs').upsert([
-        { key: 'default_ai_prompt', value: promptVal, updated_at: new Date().toISOString() }
+        { key: 'default_ai_prompt', value: promptVal, updated_at: new Date().toISOString() },
+        { key: 'default_custom_prompt_rules', value: customRulesVal, updated_at: new Date().toISOString() }
       ]);
       loadedAiPrompt = promptVal;
+      loadedDefaultCustomRules = customRulesVal;
       showViewAiPrompt();
-      alert('✅ Đã lưu AI System Prompt mặc định!');
+      alert('✅ Đã lưu AI System Prompt và Quy tắc mặc định!');
     } catch (e) {
       alert(`❌ Lỗi lưu AI Prompt: ${e.message}`);
     }
@@ -1248,6 +1311,10 @@ document.addEventListener('DOMContentLoaded', async () => {
           }
           if (cfg.key === 'default_ai_prompt') {
             loadedAiPrompt = typeof cfg.value === 'string' ? cfg.value : JSON.stringify(cfg.value);
+            renderPromptView();
+          }
+          if (cfg.key === 'default_custom_prompt_rules') {
+            loadedDefaultCustomRules = typeof cfg.value === 'string' ? cfg.value : JSON.stringify(cfg.value);
             renderPromptView();
           }
           if (cfg.key === 'global_blacklist_phones') {
@@ -2064,3 +2131,45 @@ document.addEventListener('DOMContentLoaded', async () => {
   // Initial load
   loadMetrics();
 });
+
+// ─── ADMIN IMPERSONATION SYSTEM ───────────────────────────────────────────
+window.startAdminImpersonate = async function(shopId, shopName) {
+  const reason = prompt(`⚠️ XÁC NHẬN HÓA THÂN VÀO SHOP: ${shopName.toUpperCase()}\n\nVui lòng nhập lý do hóa thân hỗ trợ (bắt buộc):`);
+  if (reason === null) return; // Cancelled
+  if (!reason.trim()) return alert('Bạn phải nhập lý do hóa thân để hệ thống ghi nhận nhật ký bảo mật!');
+
+  try {
+    const sbClient = getSupabaseClient();
+    if (!sbClient) throw new Error('Không kết nối được database.');
+
+    // 1. Ghi log hóa thân thông qua RPC bảo mật
+    const { data, error } = await sbClient.rpc('admin_start_impersonation', {
+      p_shop_id: shopId,
+      p_reason: reason.trim()
+    });
+
+    if (error) throw error;
+    if (data && data.success) {
+      // 2. Lưu trạng thái hóa thân xuống local storage
+      const preShopId = localStorage.getItem('af_active_shop_id') || localStorage.getItem('current_shop_id') || 'default';
+      localStorage.setItem('pre_impersonation_shop_id', preShopId);
+      
+      localStorage.setItem('impersonation_active', 'true');
+      localStorage.setItem('impersonated_shop_id', shopId);
+      localStorage.setItem('impersonated_shop_name', shopName);
+      localStorage.setItem('impersonation_reason', reason.trim());
+      localStorage.setItem('impersonation_started_at', Date.now());
+
+      // 3. Chuyển context hoạt động sang shop này
+      localStorage.setItem('af_active_shop_id', shopId);
+      localStorage.setItem('current_shop_id', shopId);
+
+      alert(`🎉 Hóa thân thành công dưới quyền Shop: ${shopName.toUpperCase()}!\nHệ thống tự động chuyển bạn về trang chính.`);
+      window.location.replace('index.html');
+    } else {
+      throw new Error(data?.error || 'Lỗi không xác định khi hóa thân.');
+    }
+  } catch (err) {
+    alert('❌ Lỗi hóa thân thất bại: ' + (err.message || err));
+  }
+};

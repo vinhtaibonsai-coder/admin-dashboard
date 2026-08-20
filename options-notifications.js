@@ -223,6 +223,8 @@
     }
   }
 
+  window.refreshNotificationCenter = initNotifications;
+
   document.addEventListener('DOMContentLoaded', () => {
     initNotifications();
   });

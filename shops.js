@@ -403,6 +403,36 @@ document.addEventListener('DOMContentLoaded', () => {
       editShopName.value = shop.name;
       editShopStatus.value = shop.status || 'active';
       await loadUserDropdown(editShopOwner, shop.owner_id);
+
+      // Fetch shop quotas
+      try {
+        const { data: quota } = await sb
+          .from('shop_quotas')
+          .select('max_devices, max_users, daily_ai_limit, monthly_order_limit')
+          .eq('shop_id', shopId)
+          .maybeSingle();
+
+        document.getElementById('edit-shop-max-devices').value = quota ? (quota.max_devices ?? 5) : 5;
+        document.getElementById('edit-shop-max-users').value = quota ? (quota.max_users ?? 5) : 5;
+        document.getElementById('edit-shop-daily-ai').value = quota ? (quota.daily_ai_limit ?? 500) : 500;
+        document.getElementById('edit-shop-monthly-order').value = quota ? (quota.monthly_order_limit ?? 5000) : 5000;
+      } catch (quotaErr) {
+        console.warn('Quota fetch error:', quotaErr);
+      }
+
+      // Fetch custom prompt rules
+      try {
+        const { data: flags } = await sb
+          .from('shop_feature_flags')
+          .select('custom_prompt_rules')
+          .eq('shop_id', shopId)
+          .maybeSingle();
+
+        document.getElementById('edit-shop-custom-prompt').value = flags ? (flags.custom_prompt_rules || '') : '';
+      } catch (flagsErr) {
+        console.warn('Feature flags fetch error:', flagsErr);
+      }
+
       await loadShopMembers(shopId);
     } catch (err) {
       console.error(err);
@@ -441,6 +471,29 @@ document.addEventListener('DOMContentLoaded', () => {
             p_shop_id: id, p_user_id: ownerId, p_role: 'SHOP_OWNER'
           });
         }
+
+        // Save shop quotas
+        const maxDevices = parseInt(document.getElementById('edit-shop-max-devices').value, 10) || 5;
+        const maxUsers = parseInt(document.getElementById('edit-shop-max-users').value, 10) || 5;
+        const dailyAi = parseInt(document.getElementById('edit-shop-daily-ai').value, 10) || 500;
+        const monthlyOrder = parseInt(document.getElementById('edit-shop-monthly-order').value, 10) || 5000;
+        const customPrompt = document.getElementById('edit-shop-custom-prompt').value.trim();
+
+        const { error: quotaSaveErr } = await sb.from('shop_quotas').upsert({
+          shop_id: id,
+          max_devices: maxDevices,
+          max_users: maxUsers,
+          daily_ai_limit: dailyAi,
+          monthly_order_limit: monthlyOrder
+        }, { onConflict: 'shop_id' });
+        if (quotaSaveErr) throw quotaSaveErr;
+
+        // Save custom prompt rules
+        const { error: flagsSaveErr } = await sb.from('shop_feature_flags').upsert({
+          shop_id: id,
+          custom_prompt_rules: customPrompt
+        }, { onConflict: 'shop_id' });
+        if (flagsSaveErr) throw flagsSaveErr;
 
         if (typeof currentUser !== 'undefined' && currentUser) {
           await sb.from('audit_logs').insert([{

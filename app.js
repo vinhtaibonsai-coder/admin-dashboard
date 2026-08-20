@@ -65,6 +65,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     // 4. Đăng ký Realtime Subscriptions
     setupRealtimeSubscriptions();
 
+    // 5. Kiểm tra Hóa thân (Impersonation)
+    checkImpersonationState();
+    setInterval(checkImpersonationState, 30000);
+
   } catch (err) {
     console.error('Lỗi khởi tạo Dashboard:', err);
     window.location.replace('login.html');
@@ -268,70 +272,15 @@ async function fetchShopsList() {
 
 // ─── 2. FETCH SUBMITTED ORDERS & SMART DE-DUPLICATION ──────────────────
 async function fetchSubmittedOrders() {
-  if (!sb) return;
-  try {
-    const { data, error } = await sb
-      .from('submitted_orders')
-      .select('*')
-      .order('submitted_at', { ascending: false })
-      .limit(1000);
-
-    if (!error && data) {
-      // Smart De-duplication: Gom các bản ghi cùng 1 đơn hàng (trước & sau khi bưu điện cấp mã tracking)
-      const uniqueMap = new Map();
-
-      for (const order of data) {
-        const phone = String(order.phone || '').replace(/\D/g, '');
-        const name = (order.name || order.customer_name || '').trim().toLowerCase();
-        const code = (order.order_code || '').trim().toLowerCase();
-        const timeKey = order.submitted_at ? new Date(order.submitted_at).toISOString().slice(0, 16) : 'notime';
-
-        const key = code && code !== '—' ? `code_${code}` : `np_${phone}_${name}_${timeKey}`;
-
-        if (!uniqueMap.has(key)) {
-          uniqueMap.set(key, { ...order });
-        } else {
-          const existing = uniqueMap.get(key);
-          if (!existing.tracking_code && order.tracking_code) {
-            existing.tracking_code = order.tracking_code;
-          }
-          if (!existing.order_code && order.order_code) {
-            existing.order_code = order.order_code;
-          }
-          if (!existing.cod_amount && order.cod_amount) {
-            existing.cod_amount = order.cod_amount;
-          }
-          if (!existing.carrier_account && order.carrier_account) {
-            existing.carrier_account = order.carrier_account;
-          }
-          if (!existing.device_name && order.device_name) {
-            existing.device_name = order.device_name;
-          }
-        }
-      }
-
-      allSubmittedOrders = Array.from(uniqueMap.values());
-    }
-  } catch (err) {
-    console.warn('Lỗi tải đơn đã lên:', err);
+  if (typeof OrderService !== 'undefined') {
+    allSubmittedOrders = await OrderService.fetchSubmittedOrders(sb, 1000);
   }
 }
 
 // ─── 3. FETCH DRAFT ORDERS ──────────────────────────────────────────────
 async function fetchDraftOrders() {
-  if (!sb) return;
-  try {
-    const { data, error } = await sb
-      .from('orders')
-      .select('*')
-      .order('created_at', { ascending: false })
-      .limit(500);
-
-    if (!error && data) {
-      allDraftOrders = data;
-    }
-  } catch (err) {
-    console.warn('Lỗi tải đơn nháp:', err);
+  if (typeof OrderService !== 'undefined') {
+    allDraftOrders = await OrderService.fetchDraftOrders(sb, 500);
   }
 }
 
@@ -427,6 +376,9 @@ async function fetchShopSettings() {
     if (activeShopId && activeShopId !== 'all') {
       const { data: shop } = await sb.from('shops').select('*').eq('id', activeShopId).maybeSingle();
       if (shop) currentShopConfig.shopDetails = shop;
+
+      const { data: flags } = await sb.from('shop_feature_flags').select('custom_prompt_rules').eq('shop_id', activeShopId).maybeSingle();
+      currentShopConfig.customPromptRules = flags ? (flags.custom_prompt_rules || '') : '';
     }
   } catch (err) {
     console.warn('Lỗi tải cấu hình shop:', err);
@@ -1273,7 +1225,7 @@ function renderStaffTable() {
           ` : `
             <div style="display:flex; gap:4px;">
               <button class="btn btn-secondary btn-sm" onclick="promptChangeStaffRole('${m.id}', '${roleCode}')" title="Phân quyền & Vai trò"><i class="ph ph-shield"></i></button>
-              <button class="btn btn-secondary btn-sm" onclick="promptResetStaffPassword('${p.email}')" title="Đổi mật khẩu"><i class="ph ph-key"></i></button>
+              <button class="btn btn-secondary btn-sm" onclick="promptResetStaffPassword('${m.user_id}', '${p.email}')" title="Đổi mật khẩu"><i class="ph ph-key"></i></button>
               <button class="btn btn-secondary btn-sm" style="color:#EF4444;" onclick="deleteStaffMember('${m.id}')" title="Xóa khỏi shop"><i class="ph ph-trash"></i></button>
             </div>
           `}
@@ -1319,6 +1271,11 @@ function renderShopSettingsForm() {
   if (cfgBankName) cfgBankName.value = vnpostCfg.bank_name || 'Vietcombank';
   if (cfgBankAccountNo) cfgBankAccountNo.value = vnpostCfg.bank_account_no || '0123456789';
   if (cfgBankAccountHolder) cfgBankAccountHolder.value = vnpostCfg.bank_account_holder || defaultOwnerName.toUpperCase();
+
+  const cfgCustomPromptRules = document.getElementById('cfgCustomPromptRules');
+  if (cfgCustomPromptRules) {
+    cfgCustomPromptRules.value = currentShopConfig.customPromptRules || '';
+  }
 }
 
 // ─── 8. RENDER DEVICES TABLE ────────────────────────────────────────────
@@ -1387,6 +1344,17 @@ function setupRealtimeSubscriptions() {
         await aggregateCustomersData();
         renderCustomersTable();
         renderBlacklist();
+      })
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'notifications' }, async (payload) => {
+        if (payload.new) {
+          const currentShopObj = currentShops.find(s => s.id === activeShopId) || currentShops[0];
+          if (payload.new.is_global || (currentShopObj && payload.new.shop_id === currentShopObj.id)) {
+            showOwnerNotification(`🔔 ${payload.new.title.toUpperCase()}\n\n${payload.new.content}`);
+          }
+        }
+        if (typeof window.refreshNotificationCenter === 'function') {
+          await window.refreshNotificationCenter();
+        }
       })
       .subscribe();
   } catch (err) {
@@ -1465,6 +1433,7 @@ function initEventHandlers() {
     btn.innerHTML = '<i class="ph ph-spinner animate-spin"></i> Đang lưu...';
 
     const newShopName = document.getElementById('cfgShopName')?.value?.trim();
+    const customPromptRules = document.getElementById('cfgCustomPromptRules')?.value?.trim();
 
     const vnpostConfig = {
       sender_name: document.getElementById('cfgSenderName')?.value,
@@ -1489,13 +1458,26 @@ function initEventHandlers() {
           await ShopService.saveShopFullConfig(sb, activeShopId, newShopName, vnpostConfig, jtConfig);
         } else {
           // Fallback lưu trực tiếp
-          if (newShopName && activeShopId && activeShopId !== 'all') {
-            await sb.from('shops').update({ name: newShopName }).eq('id', activeShopId);
+          if (activeShopId && activeShopId !== 'all') {
+            if (newShopName) {
+              await sb.from('shops').update({ name: newShopName }).eq('id', activeShopId);
+            }
+            await sb.from('carrier_configs').upsert([
+              { shop_id: activeShopId, carrier: 'vnpost', config: vnpostConfig },
+              { shop_id: activeShopId, carrier: 'jt', config: jtConfig }
+            ]);
           }
-          await sb.from('carrier_configs').upsert([
-            { carrier: 'vnpost', config: vnpostConfig },
-            { carrier: 'jt', config: jtConfig }
-          ], { onConflict: 'carrier' });
+        }
+
+        // Save custom prompt rules
+        if (activeShopId && activeShopId !== 'all') {
+          const { error: flagsErr } = await sb.from('shop_feature_flags').upsert({
+            shop_id: activeShopId,
+            custom_prompt_rules: customPromptRules,
+            updated_at: new Date().toISOString()
+          }, { onConflict: 'shop_id' });
+          if (flagsErr) throw flagsErr;
+          currentShopConfig.customPromptRules = customPromptRules;
         }
 
         const titleEl = document.getElementById('topbarShopTitle');
@@ -1503,7 +1485,7 @@ function initEventHandlers() {
         const sideSubEl = document.getElementById('sidebarShopName');
         if (sideSubEl && newShopName) sideSubEl.textContent = '🏪 ' + newShopName;
       }
-      alert('Đã lưu cấu hình Shop & Bưu Cục thành công vào Supabase! Tên shop và thông tin người gửi đã được cập nhật.');
+      alert('Đã lưu cấu hình Shop & Bưu Cục thành công vào Supabase! Tên shop, thông tin bưu cục và quy tắc prompt AI đã được cập nhật.');
     } catch (err) {
       alert('Lỗi lưu cấu hình: ' + err.message);
     } finally {
@@ -1647,6 +1629,48 @@ Người nhận: Trần Hải Đăng - SĐT: 0918.776.889. Tiền COD thu 850k n
       'Phân Hạng': c.segment || ''
     }));
     downloadCsv(data, `Danh_Ba_Khach_${new Date().toISOString().split('T')[0]}.csv`);
+  });
+
+  // Kích hoạt License Key (Redeem Code)
+  document.getElementById('btnRedeemLicense')?.addEventListener('click', async () => {
+    const codeInp = document.getElementById('txtRedeemCode');
+    const code = (codeInp?.value || '').trim();
+    if (!code) return alert('Vui lòng nhập mã kích hoạt bản quyền!');
+
+    const btn = document.getElementById('btnRedeemLicense');
+    btn.disabled = true;
+    btn.innerHTML = '<i class="ph ph-spinner animate-spin"></i> Đang kích hoạt...';
+
+    try {
+      const activeShop = currentShops.find(s => s.id === activeShopId) || currentShops[0];
+      if (!activeShop || !activeShop.id) {
+        throw new Error('Không xác định được Cửa hàng hiện tại để nạp.');
+      }
+
+      if (sb) {
+        const { data, error } = await sb.rpc('redeem_license_key', {
+          p_shop_id: activeShop.id,
+          p_key_code: code
+        });
+        if (error) throw error;
+        if (data && data.success) {
+          alert(`🎉 Kích hoạt thành công gói ${data.plan_code}!\nHạn sử dụng mới: ${new Date(data.expires_at).toLocaleDateString('vi-VN')}`);
+          if (codeInp) codeInp.value = '';
+          
+          // Tải lại toàn bộ hạn ngạch của shop
+          await loadAllShopData();
+        } else {
+          throw new Error(data?.error || 'Mã không đúng hoặc đã qua sử dụng.');
+        }
+      } else {
+        throw new Error('Supabase client chưa được kết nối.');
+      }
+    } catch (err) {
+      alert('❌ Lỗi kích hoạt mã: ' + (err.message || err));
+    } finally {
+      btn.disabled = false;
+      btn.innerHTML = '<i class="ph ph-check-circle"></i> Kích Hoạt Mã Ngay';
+    }
   });
 }
 
@@ -1917,8 +1941,14 @@ window.copyOrderInfo = function(phone, name, address) {
 window.deleteOrderRecord = async function(id, type) {
   if (!confirm('Bạn có chắc muốn xóa đơn này khỏi hệ thống?')) return;
   try {
-    const table = type === 'submitted' ? 'submitted_orders' : 'orders';
-    if (sb) {
+    if (typeof OrderService !== 'undefined') {
+      if (type === 'submitted') {
+        await OrderService.deleteSubmittedOrder(sb, id);
+      } else {
+        await OrderService.deleteDraftOrder(sb, id);
+      }
+    } else if (sb) {
+      const table = type === 'submitted' ? 'submitted_orders' : 'orders';
       await sb.from(table).delete().eq('id', id);
     }
     if (type === 'submitted') await fetchSubmittedOrders();
@@ -1963,15 +1993,17 @@ window.promptChangeStaffRole = async function(memberId, currentRole) {
   }
 };
 
-window.promptResetStaffPassword = async function(email) {
+window.promptResetStaffPassword = async function(userId, email) {
+  if (!userId) return alert('Không tìm thấy ID người dùng!');
   if (!email || email === '--') return alert('Tài khoản này chưa có email xác thực!');
   const newPass = prompt(`Nhập mật khẩu mới cho tài khoản "${email}" (tối thiểu 6 ký tự):`);
   if (!newPass) return;
   if (newPass.trim().length < 6) return alert('Mật khẩu mới phải có ít nhất 6 ký tự!');
 
   try {
-    if (typeof AuthService !== 'undefined' && AuthService.changePasswordForEmail) {
-      await AuthService.changePasswordForEmail(email, newPass.trim());
+    if (typeof AuthService !== 'undefined' && AuthService.changeEmployeePassword) {
+      await AuthService.changeEmployeePassword(userId, newPass.trim());
+      alert(`Đã đặt lại mật khẩu thành công cho tài khoản "${email}"!`);
     } else {
       alert(`Đã đặt lại mật khẩu thành công cho "${email}"! Mật khẩu mới: ${newPass.trim()}`);
     }
@@ -1983,7 +2015,9 @@ window.promptResetStaffPassword = async function(email) {
 window.deleteStaffMember = async function(memberId) {
   if (!confirm('Xác nhận xóa quyền nhân viên này khỏi Shop?')) return;
   try {
-    if (sb) {
+    if (typeof MemberService !== 'undefined') {
+      await MemberService.removeMember(memberId);
+    } else if (sb) {
       await sb.from('shop_members').delete().eq('id', memberId);
     }
     await fetchShopStaff();
@@ -2068,3 +2102,73 @@ function downloadCsv(data, filename) {
   link.download = filename;
   link.click();
 }
+
+// ─── IMPERSONATION STATE MANAGER & BANNER ─────────────────────────────────
+function checkImpersonationState() {
+  const impersonationActive = localStorage.getItem('impersonation_active') === 'true';
+  if (!impersonationActive) return;
+
+  const startedAt = parseInt(localStorage.getItem('impersonation_started_at') || '0', 10);
+  const maxDuration = 30 * 60 * 1000; // 30 mins
+  if (Date.now() - startedAt > maxDuration) {
+    alert('⏳ Thời gian hóa thân hỗ trợ (tối đa 30 phút) đã hết hạn. Hệ thống tự động thoát.');
+    stopImpersonation();
+    return;
+  }
+
+  const impersonatedShopName = localStorage.getItem('impersonated_shop_name') || 'Cửa hàng';
+  const reason = localStorage.getItem('impersonation_reason') || 'Hỗ trợ kỹ thuật';
+
+  let banner = document.getElementById('impersonation-banner');
+  if (!banner) {
+    banner = document.createElement('div');
+    banner.id = 'impersonation-banner';
+    banner.style.cssText = `
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      background: #EF4444;
+      color: #FFFFFF;
+      text-align: center;
+      padding: 8px 16px;
+      font-weight: 700;
+      font-size: 12px;
+      z-index: 999999;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      gap: 16px;
+      box-shadow: 0 4px 6px -1px rgba(0,0,0,0.15);
+    `;
+    document.body.appendChild(banner);
+    document.body.style.paddingTop = '32px';
+  }
+
+  banner.innerHTML = `
+    <span>⚠️ ĐANG HÓA THÂN VÀO CỬA HÀNG: ${escapeHtml(impersonatedShopName.toUpperCase())} (Lý do: ${escapeHtml(reason)})</span>
+    <button onclick="stopImpersonation()" style="background:#FFFFFF; color:#EF4444; border:none; padding:4px 12px; border-radius:6px; font-weight:800; cursor:pointer; font-size:11px; transition:opacity 0.15s;" onmouseover="this.style.opacity='0.9'" onmouseout="this.style.opacity='1'">Thoát hóa thân</button>
+  `;
+}
+
+window.stopImpersonation = function() {
+  localStorage.removeItem('impersonation_active');
+  localStorage.removeItem('impersonated_shop_id');
+  localStorage.removeItem('impersonated_shop_name');
+  localStorage.removeItem('impersonation_reason');
+  localStorage.removeItem('impersonation_started_at');
+  
+  const oldActiveShopId = localStorage.getItem('pre_impersonation_shop_id');
+  if (oldActiveShopId) {
+    localStorage.setItem('af_active_shop_id', oldActiveShopId);
+    localStorage.setItem('current_shop_id', oldActiveShopId);
+    localStorage.removeItem('pre_impersonation_shop_id');
+  }
+
+  const banner = document.getElementById('impersonation-banner');
+  if (banner) banner.remove();
+  document.body.style.paddingTop = '0px';
+
+  alert('Đã thoát trạng thái hóa thân. Đang tải lại dữ liệu...');
+  window.location.reload();
+};

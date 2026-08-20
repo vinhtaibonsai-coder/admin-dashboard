@@ -587,7 +587,12 @@
                 </div>
                 <div id="view-ai-prompt" style="padding:10px 12px; background:var(--bg); border:1px solid var(--border); border-radius:8px; font-size:12px; color:var(--text); white-space:pre-wrap; line-height:1.5;"></div>
                 <div id="edit-ai-prompt" class="hidden">
+                  <label style="font-size:11px; font-weight:bold; color:var(--text-s); display:block; margin-bottom:4px;">Prompt hệ thống gốc:</label>
                   <textarea id="textarea-default-prompt" class="field" rows="3"></textarea>
+                  
+                  <label style="font-size:11px; font-weight:bold; color:var(--text-s); display:block; margin-top:10px; margin-bottom:4px;">Quy tắc Prompt tùy chọn mặc định (Default custom rules fallback):</label>
+                  <textarea id="textarea-default-custom-rules" class="field" rows="2" placeholder="Luật bổ sung mặc định cho mọi shop..."></textarea>
+                  
                   <div class="cfg-footer">
                     <button type="button" id="btn-cancel-ai-prompt" class="btn btn-sm btn-secondary">Hủy</button>
                   </div>
@@ -946,6 +951,30 @@
           <div class="form-group">
             <label>Chủ sở hữu (Owner)</label>
             <select id="edit-shop-owner" class="field"></select>
+          </div>
+          <div class="form-row-2" style="margin-top:10px;">
+            <div class="form-group">
+              <label>Số thiết bị tối đa (Max Devices)</label>
+              <input type="number" id="edit-shop-max-devices" class="field" min="1" />
+            </div>
+            <div class="form-group">
+              <label>Số nhân viên tối đa (Max Users)</label>
+              <input type="number" id="edit-shop-max-users" class="field" min="1" />
+            </div>
+          </div>
+          <div class="form-row-2" style="margin-top:10px;">
+            <div class="form-group">
+              <label>AI bóc tách ngày (Daily AI Limit)</label>
+              <input type="number" id="edit-shop-daily-ai" class="field" min="0" />
+            </div>
+            <div class="form-group">
+              <label>Giới hạn đơn tháng (Monthly Order Limit)</label>
+              <input type="number" id="edit-shop-monthly-order" class="field" min="0" />
+            </div>
+          </div>
+          <div class="form-group" style="margin-top:10px;">
+            <label>Luật Prompt AI riêng của Shop (Custom Prompt Rules)</label>
+            <textarea id="edit-shop-custom-prompt" class="field" style="height:60px; resize:vertical;" placeholder="Ví dụ: Ưu tiên bóc tách tên phụ trong ngoặc, bỏ qua số điện thoại phụ..."></textarea>
           </div>
           <button id="btn-save-shop-info" class="btn btn-primary" style="margin-top:8px;">
             <i class="ph ph-floppy-disk"></i> Lưu thông tin Shop

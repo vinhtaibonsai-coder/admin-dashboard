@@ -117,23 +117,8 @@ const AuthService = {
   // Đăng nhập trực tiếp bằng Email (đã được chuẩn hoá)
   async login(email, password) {
     const { url, anonKey } = await this._getSupabaseUrlAndKey();
-    const lowerEmail = (email || '').toLowerCase().trim();
-    const pwd = password || '';
-    // Chỉ fallback local khi CHƯA cấu hình Supabase. Key publishable (sb_publishable_...)
-    // và anon key (eyJ...) đều hợp lệ — không được loại bỏ dựa trên prefix
     if (!url || !anonKey) {
-      if (lowerEmail === 'admin@vietautofill.com' && pwd !== 'Admin@123456') {
-        throw new Error('Email hoặc mật khẩu không đúng!');
-      }
-      if (
-        (lowerEmail === 'test_owner_alpha@test.com' || 
-         lowerEmail === 'test_owner_beta@test.com' || 
-         lowerEmail === 'test_owner_gamma@test.com') && 
-        pwd !== 'Test@123456'
-      ) {
-        throw new Error('Email hoặc mật khẩu không đúng!');
-      }
-      return await this._createLocalDevSession(email, 'Chủ Shop');
+      throw new Error('Thiếu cấu hình kết nối máy chủ Supabase. Vui lòng thiết lập trong Cài đặt.');
     }
 
     try {
