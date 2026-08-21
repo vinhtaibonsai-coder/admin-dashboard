@@ -391,8 +391,9 @@ async function fetchShopSettings() {
       const { data: shop } = await sb.from('shops').select('*').eq('id', activeShopId).maybeSingle();
       if (shop) currentShopConfig.shopDetails = shop;
 
-      const { data: flags } = await sb.from('shop_feature_flags').select('custom_prompt_rules').eq('shop_id', activeShopId).maybeSingle();
+      const { data: flags } = await sb.from('shop_feature_flags').select('custom_prompt_rules, vnpost_api_token').eq('shop_id', activeShopId).maybeSingle();
       currentShopConfig.customPromptRules = flags ? (flags.custom_prompt_rules || '') : '';
+      currentShopConfig.vnpostApiToken = flags ? (flags.vnpost_api_token || '') : '';
     }
   } catch (err) {
     console.warn('Lỗi tải cấu hình shop:', err);
@@ -505,8 +506,8 @@ function renderDashboardKPIs() {
   let drafts = [...allDraftOrders];
 
   if (activeShopId && activeShopId !== 'all') {
-    submitted = submitted.filter(o => o.shop_id === activeShopId || !o.shop_id);
-    drafts = drafts.filter(o => o.shop_id === activeShopId || !o.shop_id);
+    submitted = submitted.filter(o => o.shop_id === activeShopId);
+    drafts = drafts.filter(o => o.shop_id === activeShopId);
   }
 
   const totalSubmitted = submitted.length;
@@ -625,7 +626,7 @@ function renderRecentOrdersStream() {
 
   let stream = [...allSubmittedOrders];
   if (activeShopId && activeShopId !== 'all') {
-    stream = stream.filter(o => o.shop_id === activeShopId || !o.shop_id);
+    stream = stream.filter(o => o.shop_id === activeShopId);
   }
 
   const recent = stream.slice(0, 5);
@@ -822,7 +823,7 @@ function filterSubmittedOrders() {
   let list = [...allSubmittedOrders];
 
   if (activeShopId && activeShopId !== 'all') {
-    list = list.filter(o => o.shop_id === activeShopId || !o.shop_id);
+    list = list.filter(o => o.shop_id === activeShopId);
   }
 
   filteredSubmittedOrders = list.filter(o => {
@@ -1232,6 +1233,17 @@ function renderShopSettingsForm() {
   if (cfgCustomPromptRules) {
     cfgCustomPromptRules.value = currentShopConfig.customPromptRules || '';
   }
+
+  const cfgVnpostWebhookToken = document.getElementById('cfgVnpostWebhookToken');
+  const cfgVnpostWebhookUrl = document.getElementById('cfgVnpostWebhookUrl');
+  if (cfgVnpostWebhookToken) {
+    cfgVnpostWebhookToken.value = currentShopConfig.vnpostApiToken || '';
+  }
+  if (cfgVnpostWebhookUrl) {
+    const token = currentShopConfig.vnpostApiToken || '';
+    const baseUrl = (typeof SUPABASE_CONFIG !== 'undefined' && SUPABASE_CONFIG.url) ? SUPABASE_CONFIG.url : 'https://xlgovgynbsahuykyjzcx.supabase.co';
+    cfgVnpostWebhookUrl.value = token ? `${baseUrl}/functions/v1/vnpost-webhook?token=${token}` : 'Điền hoặc tạo Token để hiển thị đường dẫn Webhook';
+  }
 }
 
 // ─── 8. RENDER DEVICES TABLE ────────────────────────────────────────────
@@ -1433,15 +1445,18 @@ function initEventHandlers() {
           }
         }
 
-        // Save custom prompt rules
+        // Save custom prompt rules & webhook token
         if (activeShopId && activeShopId !== 'all') {
+          const webhookToken = document.getElementById('cfgVnpostWebhookToken')?.value?.trim() || null;
           const { error: flagsErr } = await sb.from('shop_feature_flags').upsert({
             shop_id: activeShopId,
             custom_prompt_rules: customPromptRules,
+            vnpost_api_token: webhookToken,
             updated_at: new Date().toISOString()
           }, { onConflict: 'shop_id' });
           if (flagsErr) throw flagsErr;
           currentShopConfig.customPromptRules = customPromptRules;
+          currentShopConfig.vnpostApiToken = webhookToken;
         }
 
         const titleEl = document.getElementById('topbarShopTitle');
@@ -1455,6 +1470,43 @@ function initEventHandlers() {
     } finally {
       btn.disabled = false;
       btn.innerHTML = '<i class="ph ph-floppy-disk"></i> Lưu Cấu Hình Shop';
+    }
+  });
+
+  // Webhook token generation & copying listeners
+  document.getElementById('btnGenWebhookToken')?.addEventListener('click', () => {
+    const inputToken = document.getElementById('cfgVnpostWebhookToken');
+    const inputUrl = document.getElementById('cfgVnpostWebhookUrl');
+    if (inputToken) {
+      const randomToken = 'vnp_' + Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
+      inputToken.value = randomToken;
+      
+      if (inputUrl) {
+        const baseUrl = (typeof SUPABASE_CONFIG !== 'undefined' && SUPABASE_CONFIG.url) ? SUPABASE_CONFIG.url : 'https://xlgovgynbsahuykyjzcx.supabase.co';
+        inputUrl.value = `${baseUrl}/functions/v1/vnpost-webhook?token=${randomToken}`;
+      }
+    }
+  });
+
+  document.getElementById('cfgVnpostWebhookToken')?.addEventListener('input', (e) => {
+    const inputUrl = document.getElementById('cfgVnpostWebhookUrl');
+    if (inputUrl) {
+      const token = e.target.value.trim();
+      const baseUrl = (typeof SUPABASE_CONFIG !== 'undefined' && SUPABASE_CONFIG.url) ? SUPABASE_CONFIG.url : 'https://xlgovgynbsahuykyjzcx.supabase.co';
+      inputUrl.value = token ? `${baseUrl}/functions/v1/vnpost-webhook?token=${token}` : 'Điền hoặc tạo Token để hiển thị đường dẫn Webhook';
+    }
+  });
+
+  document.getElementById('btnCopyWebhookUrl')?.addEventListener('click', () => {
+    const inputUrl = document.getElementById('cfgVnpostWebhookUrl');
+    if (inputUrl && inputUrl.value && !inputUrl.value.startsWith('Điền')) {
+      navigator.clipboard.writeText(inputUrl.value).then(() => {
+        alert('📋 Đã copy đường dẫn Webhook vào bộ nhớ tạm! Bạn có thể dán link này vào mục cấu hình Webhook trên trang VNPost.');
+      }).catch(err => {
+        alert('Lỗi sao chép: ' + err);
+      });
+    } else {
+      alert('⚠️ Vui lòng nhập hoặc tạo mã Token trước!');
     }
   });
 

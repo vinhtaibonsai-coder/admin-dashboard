@@ -685,13 +685,15 @@
   // ─── SUBMITTED ORDERS MANAGEMENT ───
   SupabaseCloud.pushSubmittedOrders = async function(orders) {
     if (!isBackground) {
+      const shopId = await this._getActiveShopId();
+      const mapped = orders.map(o => ({ ...o, shopId: o.shopId || shopId, shop_id: o.shop_id || shopId }));
       return new Promise(resolve => {
-        chrome.runtime.sendMessage({ action: 'pushSubmittedOrders', orders }, resolve);
+        chrome.runtime.sendMessage({ action: 'pushSubmittedOrders', orders: mapped }, resolve);
       });
     }
 
     if (!Array.isArray(orders) || orders.length === 0) return;
-    const shopId = await this._getActiveShopId();
+    const shopId = orders[0]?.shopId || orders[0]?.shop_id || await this._getActiveShopId();
     
     const records = orders.map(o => {
       const rec = {
@@ -707,7 +709,10 @@
         tracking_code: o.trackingCode || '',
         submitted_at: o.submittedAt || new Date().toISOString(),
         submitted_date: o.submittedDate || '',
-        device_name: o.deviceName || this._deviceName || ''
+        device_name: o.deviceName || this._deviceName || '',
+        carrier_account: o.carrierAccount || o.carrier_account || '',
+        product_note: o.productNote || o.product_note || '',
+        weight: Number(o.weight) || 0
       };
       if (shopId) rec.shop_id = shopId;
       return rec;
@@ -722,13 +727,14 @@
 
   SupabaseCloud.pushSubmittedOrder = async function(order) {
     if (!isBackground) {
+      const shopId = await this._getActiveShopId();
       return new Promise(resolve => {
-        chrome.runtime.sendMessage({ action: 'pushSubmittedOrder', order }, resolve);
+        chrome.runtime.sendMessage({ action: 'pushSubmittedOrder', order: { ...order, shopId: order.shopId || shopId, shop_id: order.shop_id || shopId } }, resolve);
       });
     }
 
     const id = order.id || 'sub_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
-    const shopId = await this._getActiveShopId();
+    const shopId = order.shopId || order.shop_id || await this._getActiveShopId();
     const rec = {
       id: id,
       saved_order_id: order.savedOrderId || '',
@@ -743,7 +749,9 @@
       submitted_at: order.submittedAt || new Date().toISOString(),
       submitted_date: order.submittedDate || '',
       device_name: order.deviceName || this._deviceName || '',
-      carrier_account: order.carrierAccount || order.carrier_account || ''
+      carrier_account: order.carrierAccount || order.carrier_account || '',
+      product_note: order.productNote || order.product_note || '',
+      weight: Number(order.weight) || 0
     };
     if (shopId) rec.shop_id = shopId;
 
@@ -786,7 +794,10 @@
       trackingCode: o.tracking_code || o.trackingCode || '',
       submittedAt: o.submitted_at || o.submittedAt || '',
       submittedDate: o.submitted_date || o.submittedDate || '',
-      deviceName: o.device_name || o.deviceName || ''
+      deviceName: o.device_name || o.deviceName || '',
+      carrierAccount: o.carrier_account || o.carrierAccount || '',
+      productNote: o.product_note || o.productNote || '',
+      weight: Number(o.weight) || 0
     }));
   };
 

@@ -62,6 +62,15 @@ const ShopService = (function () {
     localStorage.setItem('current_shop_id', shopId);
     localStorage.setItem(STORAGE_ACTIVE_SHOP_NAME, shopName);
 
+    if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
+      chrome.storage.local.get(['vnpost_session'], r => {
+        const sess = r.vnpost_session || {};
+        sess.active_shop_id = shopId;
+        chrome.storage.local.set({ vnpost_session: sess });
+      });
+      chrome.storage.local.set({ activeShopId: shopId });
+    }
+
     currentActiveShop = { id: shopId, name: shopName };
 
     // Bắn Custom Event để các tab / biểu đồ tự động cập nhật
@@ -130,6 +139,9 @@ const ShopService = (function () {
         }
       }
 
+      // Xác định danh sách shop cuối cùng được quyền truy cập
+      let finalList = isSysAdmin ? availableShops : permittedShops;
+
       // 4. Chỉ tự động khởi tạo Shop nếu toàn bộ Database chưa có bất kỳ Shop nào
       if (availableShops.length === 0 && userSession?.id) {
         let defaultName = 'Shop Lũa Thủy Sinh';
@@ -155,6 +167,7 @@ const ShopService = (function () {
           }).catch(() => {});
         }
       } else if (finalList.length === 0 && availableShops.length > 0) {
+        // Fallback chỉ khi không có shop được gán cụ thể (để đảm bảo không bị lỗi giao diện)
         finalList = availableShops;
       }
 
