@@ -142,33 +142,13 @@ const ShopService = (function () {
       // Xác định danh sách shop cuối cùng được quyền truy cập
       let finalList = isSysAdmin ? availableShops : permittedShops;
 
-      // 4. Chỉ tự động khởi tạo Shop nếu toàn bộ Database chưa có bất kỳ Shop nào
-      if (availableShops.length === 0 && userSession?.id) {
-        let defaultName = 'Shop Lũa Thủy Sinh';
-        if (userProfile?.full_name && userProfile.full_name !== 'Chủ Shop') {
-          defaultName = 'Shop ' + userProfile.full_name;
-        } else if (userSession.email) {
-          const prefix = userSession.email.split('@')[0];
-          defaultName = prefix.toLowerCase().includes('tai') ? 'Shop Lũa Thủy Sinh' : ('Shop ' + prefix.toUpperCase());
-        }
-
-        const { data: newShop } = await sb.from('shops').insert({
-          name: defaultName,
-          owner_id: userSession.id,
-          status: 'active'
-        }).select().maybeSingle();
-
-        if (newShop) {
-          finalList = [newShop];
-          await sb.from('shop_members').insert({
-            shop_id: newShop.id,
-            user_id: userSession.id,
-            role: 'OWNER'
-          }).catch(() => {});
-        }
-      } else if (finalList.length === 0 && availableShops.length > 0) {
+      if (finalList.length === 0 && availableShops.length > 0) {
         // Fallback chỉ khi không có shop được gán cụ thể (để đảm bảo không bị lỗi giao diện)
         finalList = availableShops;
+      }
+
+      if (finalList.length === 0) {
+        console.warn('[ShopService] Cảnh báo: Người dùng không được gán vào bất kỳ Shop nào.');
       }
 
       // Lưu Cache
