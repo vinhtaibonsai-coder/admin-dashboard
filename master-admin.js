@@ -478,22 +478,58 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
   };
 
-  // Delete Shop Admin (Soft-delete)
+  // Delete Shop Admin (Soft-delete shop + delete members completely)
   window.deleteShopAdmin = async function (shopId, shopName) {
     if (!shopId || !sb) return;
-    const confirmMsg = `⚠️ Bạn có chắc chắn muốn XÓA Cửa hàng "${shopName}" (Xóa mềm)?`;
-    if (!confirm(confirmMsg)) return;
 
     try {
-      const user = await AuthService.getCurrentUser();
-      const actorId = user ? user.id : null;
-      const { error } = await sb.from('shops')
-        .update({ deleted_at: new Date().toISOString(), deleted_by: actorId })
-        .eq('id', shopId);
+      // 1. Kiểm tra số lượng đơn hàng của Shop trong hệ thống
+      let orderCount = 0;
+      let submittedCount = 0;
+      
+      try {
+        const { count: ordC } = await sb.from('orders').select('id', { count: 'exact', head: true }).eq('shop_id', shopId);
+        orderCount = ordC || 0;
+      } catch (_) {}
+
+      try {
+        const { count: subC } = await sb.from('submitted_orders').select('id', { count: 'exact', head: true }).eq('shop_id', shopId);
+        submittedCount = subC || 0;
+      } catch (_) {}
+
+      const totalOrders = orderCount + submittedCount;
+      
+      // 2. Hiển thị cảnh báo tương ứng dựa trên dữ liệu đơn hàng
+      let confirmMsg = '';
+      if (totalOrders > 0) {
+        confirmMsg = `⚠️ CỬA HÀNG ĐANG CÓ ${totalOrders} ĐƠN HÀNG TRÊN HỆ THỐNG!\n\nNếu xóa cửa hàng "${shopName.toUpperCase()}":\n- Toàn bộ dữ liệu cửa hàng sẽ được ẩn đi (xóa mềm).\n- TOÀN BỘ tài khoản chủ shop & nhân viên liên quan sẽ bị XÓA VĨNH VIỄN khỏi hệ thống.\n\nBạn có chắc chắn muốn thực hiện hành động này không?`;
+      } else {
+        confirmMsg = `⚠️ CẢNH BÁO XÓA CỬA HÀNG: "${shopName.toUpperCase()}"!\n\nHành động này sẽ:\n- Ẩn cửa hàng khỏi hệ thống (xóa mềm).\n- XÓA VĨNH VIỄN tất cả tài khoản chủ shop & nhân viên liên kết với cửa hàng này.\n\nBạn có chắc chắn muốn tiếp tục?`;
+      }
+
+      if (!confirm(confirmMsg)) return;
+
+      // Xác nhận thêm một lần nữa nếu shop có đơn hàng
+      if (totalOrders > 0) {
+        if (!confirm('⚠️ Xác nhận lại lần cuối: Bạn thực sự muốn XÓA VĨNH VIỄN các tài khoản người dùng thuộc cửa hàng này? (Hành động này không thể hoàn tác)')) {
+          return;
+        }
+      }
+
+      // 3. Gọi RPC thực hiện xóa đồng bộ
+      const { data, error } = await sb.rpc('admin_delete_shop_and_members', { p_shop_id: shopId });
       if (error) throw error;
-      alert(`✅ Đã xóa Cửa hàng "${shopName}" thành công!`);
+
+      const deletedUsers = data?.deleted_users_count || 0;
+      alert(`✅ Đã xóa cửa hàng "${shopName}" thành công!\n(Đã xóa vĩnh viễn ${deletedUsers} tài khoản liên kết)`);
+      
+      // 4. Reload danh sách
       loadShops();
+      if (typeof loadUsers === 'function') {
+        loadUsers();
+      }
     } catch (e) {
+      console.error(e);
       alert(`❌ Lỗi xóa Shop: ${e.message}`);
     }
   };
@@ -1742,6 +1778,12 @@ document.addEventListener('DOMContentLoaded', async () => {
             const userEmail = btnToggleLock.getAttribute('data-user-email');
             const isLocked = btnToggleLock.getAttribute('data-locked') === 'true';
             toggleUserLock(userId, userEmail, isLocked);
+          }
+
+          if (btnDeleteUser) {
+            const userId = btnDeleteUser.getAttribute('data-user-id');
+            const userEmail = btnDeleteUser.getAttribute('data-user-email');
+            window.deleteUserAdmin(userId, userEmail);
           }
         });
       }
