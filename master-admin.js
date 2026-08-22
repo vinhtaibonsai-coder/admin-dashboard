@@ -2165,21 +2165,18 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (!confirm(`⚠️ Bạn có chắc muốn XÓA vĩnh viễn quyền truy cập của tài khoản ${userEmail}?`)) return;
 
     try {
-      let deleted = false;
-      try {
-        const { data, error } = await sb.rpc('admin_delete_user', { p_user_id: userId });
-        if (!error && data?.success) deleted = true;
-      } catch (_) {}
+      const { data, error } = await sb.rpc('admin_delete_user', { p_user_id: userId });
+      if (error) throw error;
 
-      if (!deleted) {
-        await sb.from('shop_members').delete().eq('user_id', userId);
-        await sb.from('profiles').delete().eq('id', userId);
+      if (data && data.success) {
+        alert(`✅ Đã xóa tài khoản ${userEmail} thành công!`);
+        loadUsers();
+      } else {
+        throw new Error(data?.message || 'Không thể xóa tài khoản.');
       }
-
-      alert(`✅ Đã xóa tài khoản ${userEmail} thành công!`);
-      loadUsers();
     } catch (err) {
-      alert(`❌ Lỗi xóa tài khoản: ${err.message}`);
+      console.error(err);
+      alert(`❌ Lỗi xóa tài khoản: ${err.message || err}`);
     }
   };
 
