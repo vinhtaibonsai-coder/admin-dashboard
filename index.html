@@ -62,6 +62,11 @@
         <i class="ph ph-magic-wand text-lg"></i>
         <span>Bóc Tách Đơn Nhanh</span>
       </button>
+
+      <button class="nav-item" data-tab="webhook-logs">
+        <i class="ph ph-activity text-lg"></i>
+        <span>Nhật Ký Webhook VNPost</span>
+      </button>
     </nav>
 
     <div class="sidebar-footer" style="padding-top: 14px; border-top: 1px solid var(--border); display: flex; flex-direction: column; gap: 8px;">
@@ -941,6 +946,88 @@ Anh gửi cho em cây kim quýt về 128 Lê Văn Sỹ, P10, Phú Nhuận, HCM n
         </div>
       </section>
 
+      <!-- ======================================================== -->
+      <!-- TAB 9: VNPOST WEBHOOK LOGS AND TOKEN                     -->
+      <!-- ======================================================== -->
+      <section id="tab-webhook-logs" class="tab-content">
+        <div class="page-hdr">
+          <div>
+            <h1>Nhật Ký Webhook VNPost & Cấu Hình Kết Nối</h1>
+            <p>Theo dõi toàn bộ thông tin cập nhật trạng thái đơn hàng tự động gửi về từ VNPost và kiểm tra mã Token bảo mật của shop.</p>
+          </div>
+          <div>
+            <button class="btn btn-secondary btn-sm" id="btnRefreshWebhookLogs"><i class="ph ph-arrows-clockwise"></i> Làm mới nhật ký</button>
+          </div>
+        </div>
+
+        <!-- 2 Column Layout: 1. Token Info & Webhook Settings, 2. Webhook Logs Table -->
+        <div style="display:grid; grid-template-columns: 1.2fr 2.8fr; gap:16px; align-items: start;">
+          
+          <!-- Column 1: Token & Webhook config Info -->
+          <div class="card">
+            <h3 style="font-size:14px; font-weight:700; margin-bottom:12px;"><i class="ph ph-key-bold text-indigo-500"></i> Token & Đường dẫn Webhook</h3>
+            
+            <div style="display:flex; flex-direction:column; gap:12px; font-size:12.5px;">
+              <div>
+                <span style="font-weight:700; color:var(--text-s);">MÃ TOKEN CỦA SHOP:</span>
+                <div style="display:flex; gap:6px; margin-top:4px;">
+                  <input type="text" id="webhookTabToken" class="field" style="font-family:monospace; font-weight:700; background:var(--bg);" readonly placeholder="Điền/Tạo Token ở tab Cấu hình">
+                  <button class="btn btn-secondary btn-sm" id="btnCopyWebhookTabToken" title="Sao chép Token"><i class="ph ph-copy"></i></button>
+                </div>
+              </div>
+              
+              <div>
+                <span style="font-weight:700; color:var(--text-s);">ĐƯỜNG DẪN WEBHOOK (VNPOST):</span>
+                <div style="margin-top:4px;">
+                  <textarea id="webhookTabUrl" class="field" style="width:100%; height:75px; font-family:monospace; font-size:11.5px; resize:none; background:var(--bg);" readonly placeholder="Cấu hình Token trước để hiển thị URL"></textarea>
+                  <button class="btn btn-secondary btn-sm" id="btnCopyWebhookTabUrl" style="width:100%; margin-top:6px; display:flex; justify-content:center; gap:6px;"><i class="ph ph-copy"></i> Sao chép liên kết</button>
+                </div>
+              </div>
+
+              <div style="background:var(--primary-light); border:1px solid rgba(79, 70, 229, 0.15); padding:10px; border-radius:6px; margin-top:8px;">
+                <h4 style="font-weight:700; color:var(--primary); font-size:12px; margin-bottom:4px;"><i class="ph ph-info-bold"></i> Hướng dẫn kết nối:</h4>
+                <ol style="margin-left:14px; padding-left:0; line-height:1.4; font-size:11.5px; display:flex; flex-direction:column; gap:4px; color:var(--text-s);">
+                  <li>Tạo hoặc sao chép Token từ tab <b>Cấu Hình Shop</b>.</li>
+                  <li>Cấu hình URL trên cổng thông tin Khách hàng VNPost của bạn.</li>
+                  <li>Mỗi khi đơn chuyển trạng thái, VNPost sẽ tự động gửi webhook cập nhật lên hệ thống.</li>
+                </ol>
+              </div>
+            </div>
+          </div>
+
+          <!-- Column 2: Webhook Logs list -->
+          <div class="card">
+            <h3 style="font-size:14px; font-weight:700; margin-bottom:12px;"><i class="ph ph-activity-bold text-indigo-500"></i> Lịch Sử Nhận Tin Webhook (Thời gian thực)</h3>
+            
+            <div class="table-wrap">
+              <table class="table" style="width:100%; font-size:12.5px;">
+                <thead>
+                  <tr>
+                    <th style="width:145px;">Thời gian nhận</th>
+                    <th style="width:130px;">Mã đơn / Vận đơn</th>
+                    <th style="width:130px;">Khách hàng</th>
+                    <th>Trạng thái VNPost</th>
+                    <th style="width:80px; text-align:right;">Cân nặng</th>
+                    <th style="width:90px; text-align:right;">Phí ship</th>
+                  </tr>
+                </thead>
+                <tbody id="webhookLogsList">
+                  <tr><td colspan="6" style="text-align:center; padding:30px; color:var(--text-s);">Đang nạp lịch sử webhook từ hệ thống...</td></tr>
+                </tbody>
+              </table>
+            </div>
+            
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-top:12px; font-size:12px; color:var(--text-s);">
+              <div>
+                <span id="webhookLogsTotalLabel" style="font-weight:700; color:var(--primary);">(0 bản ghi)</span>
+              </div>
+            </div>
+          </div>
+          
+        </div>
+      </section>
+
+
     </main>
   </div>
 
@@ -1044,10 +1131,23 @@ Anh gửi cho em cây kim quýt về 128 Lê Văn Sỹ, P10, Phú Nhuận, HCM n
             <div id="lblDetailCarrier" style="font-weight:700; color:#D97706;">—</div>
             <div style="color:var(--text-s);">Số tiền thu hộ (COD):</div>
             <div id="lblDetailCodAmount" style="font-weight:800; color:#10B981; font-size:14px;">—</div>
-            <div style="color:var(--text-s);">Cân nặng (grams):</div>
+            <div style="color:var(--text-s);">Cân nặng khai báo:</div>
             <div id="lblDetailWeight" style="font-weight:700;">—</div>
+            <div style="color:var(--text-s);">Cân nặng thực tế:</div>
+            <div id="lblDetailActualWeight" style="font-weight:700; color:var(--primary);">—</div>
+            <div style="color:var(--text-s);">Cước phí bưu điện:</div>
+            <div id="lblDetailActualShippingFee" style="font-weight:700; color:#E11D48;">—</div>
+            <div style="color:var(--text-s);">Trạng thái hiện tại:</div>
+            <div id="lblDetailStatus" style="font-weight:700;">—</div>
             <div style="color:var(--text-s);">Sản phẩm / Ghi chú:</div>
             <div id="lblDetailProductNote" style="font-weight:600;">—</div>
+          </div>
+        </div>
+
+        <div style="background:var(--bg); border:1px solid var(--border); padding:12px; border-radius:8px; margin-bottom:16px;">
+          <h4 style="font-size:12px; font-weight:800; margin-bottom:8px; color:var(--primary); text-transform:uppercase;"><i class="ph ph-map-pin-line"></i> Hành Trình Vận Đơn (Webhook Logs)</h4>
+          <div id="lblDetailWebhookLogsContainer" style="display:flex; flex-direction:column; gap:10px; max-height:200px; overflow-y:auto; padding-right:4px;">
+            <div style="color:var(--text-s); font-size:12px; font-style:italic;">Đang tải cập nhật hành trình...</div>
           </div>
         </div>
 

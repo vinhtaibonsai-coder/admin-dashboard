@@ -1354,6 +1354,10 @@ function initNavigationTabs() {
       tab.classList.add('active');
       const targetContent = document.getElementById(`tab-${target}`);
       if (targetContent) targetContent.classList.add('active');
+
+      if (target === 'webhook-logs') {
+        loadWebhookLogsTab();
+      }
     });
   });
 }
@@ -1364,6 +1368,40 @@ function initEventHandlers() {
 
   // Search on Staff tab
   document.getElementById('txtSearchStaff')?.addEventListener('input', renderStaffTable);
+
+  // Refresh Webhook Logs
+  document.getElementById('btnRefreshWebhookLogs')?.addEventListener('click', async () => {
+    const btn = document.getElementById('btnRefreshWebhookLogs');
+    if (btn) {
+      btn.disabled = true;
+      btn.innerHTML = '<i class="ph ph-spinner animate-spin"></i> Đang tải...';
+    }
+    await loadWebhookLogsTab();
+    if (btn) {
+      btn.disabled = false;
+      btn.innerHTML = '<i class="ph ph-arrows-clockwise"></i> Làm mới nhật ký';
+    }
+  });
+
+  // Copy Webhook tab Token
+  document.getElementById('btnCopyWebhookTabToken')?.addEventListener('click', () => {
+    const val = document.getElementById('webhookTabToken')?.value;
+    if (val) {
+      navigator.clipboard.writeText(val).then(() => alert('Đã sao chép Token!'));
+    } else {
+      alert('Không có Token để sao chép.');
+    }
+  });
+
+  // Copy Webhook tab URL
+  document.getElementById('btnCopyWebhookTabUrl')?.addEventListener('click', () => {
+    const val = document.getElementById('webhookTabUrl')?.value;
+    if (val && !val.startsWith('Điền hoặc')) {
+      navigator.clipboard.writeText(val).then(() => alert('Đã sao chép đường dẫn Webhook!'));
+    } else {
+      alert('Không có đường dẫn Webhook hợp lệ để sao chép.');
+    }
+  });
 
   // Refresh Staff list
   document.getElementById('btnRefreshStaffList')?.addEventListener('click', async () => {
@@ -2407,6 +2445,65 @@ function initOptimizedFeatures() {
     document.getElementById('lblDetailWeight').textContent = o.weight ? (o.weight + ' g') : '—';
     document.getElementById('lblDetailProductNote').textContent = o.product_note || o.productNote || '—';
     
+    // Webhook fields
+    const actualWeightEl = document.getElementById('lblDetailActualWeight');
+    if (actualWeightEl) {
+      actualWeightEl.textContent = o.actual_weight ? (o.actual_weight + ' g') : 'Chưa cập nhật';
+    }
+    const actualShippingFeeEl = document.getElementById('lblDetailActualShippingFee');
+    if (actualShippingFeeEl) {
+      actualShippingFeeEl.textContent = o.shipping_fee ? formatCurrency(o.shipping_fee) : 'Chưa cập nhật';
+    }
+    
+    // Status localization
+    const statusEl = document.getElementById('lblDetailStatus');
+    if (statusEl) {
+      const statusMap = {
+        'submitted': '<span style="color:#2563EB; font-weight:600;">Đã gửi lên hệ thống (Chờ xử lý)</span>',
+        'processing': '<span style="color:#D97706; font-weight:600;">Bưu điện nhận gửi (Đang gom)</span>',
+        'delivering': '<span style="color:#4F46E5; font-weight:600;">Đang giao hàng (Trung chuyển)</span>',
+        'delivered': '<span style="color:#10B981; font-weight:bold;">Giao hàng thành công ✅</span>',
+        'returned': '<span style="color:#EF4444; font-weight:bold;">Đã chuyển hoàn ❌</span>'
+      };
+      statusEl.innerHTML = statusMap[o.status] || o.status || 'Chờ cập nhật';
+    }
+
+    // Webhook Journey Logs rendering
+    const logsContainer = document.getElementById('lblDetailWebhookLogsContainer');
+    if (logsContainer) {
+      let logs = [];
+      if (Array.isArray(o.webhook_logs)) {
+        logs = o.webhook_logs;
+      } else if (typeof o.webhook_logs === 'string') {
+        try { logs = JSON.parse(o.webhook_logs || '[]'); } catch(e) {}
+      } else if (o.webhook_logs) {
+        logs = o.webhook_logs;
+      }
+
+      if (logs.length === 0) {
+        logsContainer.innerHTML = '<div style="color:var(--text-s); font-size:12px; font-style:italic;">Chưa có cập nhật hành trình nào từ Webhook VNPost.</div>';
+      } else {
+        // Sort newest first
+        const sortedLogs = [...logs].sort((a, b) => new Date(b.statusDate || b.receivedAt) - new Date(a.statusDate || a.receivedAt));
+        logsContainer.innerHTML = sortedLogs.map(log => {
+          const dateStr = log.statusDate 
+            ? new Date(log.statusDate).toLocaleString('vi-VN') 
+            : (log.receivedAt ? new Date(log.receivedAt).toLocaleString('vi-VN') : '—');
+          return `
+            <div style="border-left: 2px solid var(--primary); padding-left: 10px; margin-bottom: 2px;">
+              <div style="display:flex; justify-content:space-between; font-size:12px; font-weight:700; color:var(--text);">
+                <span>📍 ${escapeHtml(log.statusName || log.statusCode || 'Cập nhật')}</span>
+                <span style="font-size:11px; color:var(--text-s); font-weight:normal;">${dateStr}</span>
+              </div>
+              <div style="font-size:11px; color:var(--text-s); margin-top:2px;">
+                Cân nặng: ${log.weight ? (log.weight + ' g') : '—'} | Cước phí: ${log.totalFee ? formatCurrency(log.totalFee) : '—'}
+              </div>
+            </div>
+          `;
+        }).join('');
+      }
+    }
+    
     document.getElementById('lblDetailDeviceName').textContent = o.device_name || o.deviceName || 'Máy chính';
     document.getElementById('lblDetailSubmittedAt').textContent = o.submitted_at ? new Date(o.submitted_at).toLocaleString('vi-VN') : '—';
     document.getElementById('lblDetailUserEmail').textContent = o.user_email || '—';
@@ -2595,3 +2692,108 @@ Sản phẩm / Ghi chú: ${o.product_note || o.productNote || ''}`;
     }
   });
 }
+
+async function loadWebhookLogsTab() {
+  // Set token & url inputs
+  const token = currentShopConfig.vnpostApiToken || '';
+  const tokenInput = document.getElementById('webhookTabToken');
+  const urlTextarea = document.getElementById('webhookTabUrl');
+  if (tokenInput) tokenInput.value = token;
+  if (urlTextarea) {
+    const baseUrl = (typeof SUPABASE_CONFIG !== 'undefined' && SUPABASE_CONFIG.url) ? SUPABASE_CONFIG.url : 'https://xlgovgynbsahuykyjzcx.supabase.co';
+    urlTextarea.value = token ? `${baseUrl}/functions/v1/vnpost-webhook?token=${token}` : 'Điền hoặc tạo Token ở tab Cấu hình để hiển thị đường dẫn Webhook';
+  }
+
+  const tbody = document.getElementById('webhookLogsList');
+  const totalLabel = document.getElementById('webhookLogsTotalLabel');
+  if (!tbody) return;
+
+  tbody.innerHTML = '<tr><td colspan="6" style="text-align:center; padding:30px; color:var(--text-s);">Đang nạp nhật ký webhook từ cơ sở dữ liệu...</td></tr>';
+
+  try {
+    if (!activeShopId || activeShopId === 'all') {
+      tbody.innerHTML = '<tr><td colspan="6" style="text-align:center; padding:30px; color:var(--text-s);">Vui lòng chọn một Shop cụ thể để xem nhật ký Webhook.</td></tr>';
+      if (totalLabel) totalLabel.textContent = '(0 bản ghi)';
+      return;
+    }
+
+    // Query order_events for WEBHOOK_UPDATE
+    const { data: events, error } = await sb
+      .from('order_events')
+      .select('*')
+      .eq('shop_id', activeShopId)
+      .eq('event', 'WEBHOOK_UPDATE')
+      .order('created_at', { ascending: false })
+      .limit(100); // Limit to latest 100 updates
+
+    if (error) throw error;
+
+    if (!events || events.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="6" style="text-align:center; padding:30px; color:var(--text-s);">Chưa nhận được bất kỳ cập nhật Webhook nào cho shop này.</td></tr>';
+      if (totalLabel) totalLabel.textContent = '(0 bản ghi)';
+      return;
+    }
+
+    if (totalLabel) totalLabel.textContent = `(${events.length} bản ghi mới nhất)`;
+
+    tbody.innerHTML = events.map(evt => {
+      const receivedAt = new Date(evt.created_at).toLocaleString('vi-VN');
+      const meta = evt.meta || {};
+      
+      // Match with in-memory submitted orders if possible
+      let orderCode = meta.orderCode || meta.OrderCode || '—';
+      let trackingCode = meta.itemCode || meta.ItemCode || '—';
+      let customerName = '—';
+      let customerPhone = '—';
+
+      // Find order in memory by order_code or tracking_code
+      const matchedOrder = allSubmittedOrders.find(o => 
+        (o.order_code && o.order_code === orderCode) || 
+        (o.tracking_code && o.tracking_code === trackingCode)
+      );
+
+      if (matchedOrder) {
+        if (!orderCode || orderCode === '—') orderCode = matchedOrder.order_code || '—';
+        if (!trackingCode || trackingCode === '—') trackingCode = matchedOrder.tracking_code || '—';
+        customerName = matchedOrder.name || matchedOrder.customer_name || '—';
+        customerPhone = matchedOrder.phone || '—';
+      }
+
+      const statusName = meta.statusName || meta.statusCode || '—';
+      const statusMap = {
+        'submitted': '<span class="badge" style="background:#EFF6FF; color:#1D4ED8;">Chờ xử lý</span>',
+        'processing': '<span class="badge" style="background:#FEF3C7; color:#D97706;">Bưu điện nhận</span>',
+        'delivering': '<span class="badge" style="background:#EEF2FF; color:#4F46E5;">Đang giao</span>',
+        'delivered': '<span class="badge" style="background:#ECFDF5; color:#10B981; font-weight:bold;">Giao thành công ✅</span>',
+        'returned': '<span class="badge" style="background:#FFF1F2; color:#EF4444; font-weight:bold;">Chuyển hoàn ❌</span>'
+      };
+      
+      const systemStatusHtml = statusMap[evt.status] || `<span class="badge">${evt.status}</span>`;
+      
+      return `
+        <tr>
+          <td style="font-family:monospace; font-size:11.5px; color:var(--text-s);">${receivedAt}</td>
+          <td>
+            <div style="font-family:monospace; font-weight:700; color:var(--text);">${escapeHtml(orderCode)}</div>
+            <div style="font-family:monospace; font-size:11px; color:#059669; font-weight:700; margin-top:2px;">${escapeHtml(trackingCode)}</div>
+          </td>
+          <td>
+            <div style="font-weight:600; color:var(--text);">${escapeHtml(customerName)}</div>
+            <div style="font-family:monospace; font-size:11px; color:var(--text-s); margin-top:2px;">${escapeHtml(customerPhone)}</div>
+          </td>
+          <td>
+            <div style="font-weight:700; color:var(--text);"><i class="ph ph-map-pin" style="color:var(--primary);"></i> ${escapeHtml(statusName)}</div>
+            <div style="margin-top:2px; font-size:11px;">Hệ thống: ${systemStatusHtml}</div>
+          </td>
+          <td style="text-align:right; font-weight:600;">${meta.weight ? (meta.weight + ' g') : '—'}</td>
+          <td style="text-align:right; font-weight:700; color:#EF4444;">${meta.totalFee ? formatCurrency(meta.totalFee) : '—'}</td>
+        </tr>
+      `;
+    }).join('');
+
+  } catch (err) {
+    console.error('Error loading webhook logs:', err);
+    tbody.innerHTML = `<tr><td colspan="6" style="text-align:center; padding:30px; color:#EF4444;">Lỗi tải dữ liệu: ${escapeHtml(err.message)}</td></tr>`;
+  }
+}
+
