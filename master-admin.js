@@ -302,13 +302,33 @@ document.addEventListener('DOMContentLoaded', async () => {
         });
         data = uniqueShops;
       }
-
-      // Lọc theo từ khóa tìm kiếm
-      const searchKeyword = (document.getElementById('input-search-admin-shops')?.value || '').toLowerCase().trim();
-      if (data && searchKeyword) {
-        data = data.filter(s => (s.name || '').toLowerCase().includes(searchKeyword));
+      // Truy vấn toàn bộ Profiles từ Supabase để ánh xạ chính xác từng Owner
+      if (sb) {
+        const { data: profs } = await sb.from('profiles').select('id, email, full_name, role');
+        if (profs && profs.length > 0) {
+          profs.forEach(p => { 
+            if (p.id) profilesMap[p.id] = p;
+            if (p.email) profilesMap[p.email] = p;
+          });
+        }
       }
 
+      // Lọc theo từ khóa tìm kiếm (tên shop hoặc email/tên chủ shop)
+      const searchKeyword = (document.getElementById('input-search-admin-shops')?.value || '').toLowerCase().trim();
+      if (data && searchKeyword) {
+        data = data.filter(s => {
+          const nameMatch = (s.name || '').toLowerCase().includes(searchKeyword);
+          const owner = (s.owner_id ? profilesMap[s.owner_id] : null) || 
+                        (s.owner_email ? profilesMap[s.owner_email] : null);
+          const ownerNameMatch = owner && (owner.full_name || '').toLowerCase().includes(searchKeyword);
+          const ownerEmailMatch = owner && (owner.email || '').toLowerCase().includes(searchKeyword);
+          
+          const fallbackNameMatch = (s.owner_name || '').toLowerCase().includes(searchKeyword);
+          const fallbackEmailMatch = (s.owner_email || '').toLowerCase().includes(searchKeyword);
+          
+          return nameMatch || ownerNameMatch || ownerEmailMatch || fallbackNameMatch || fallbackEmailMatch;
+        });
+      }
       if (!data || data.length === 0) {
         tbody.innerHTML = `
           <tr>
@@ -320,17 +340,6 @@ document.addEventListener('DOMContentLoaded', async () => {
           </tr>
         `;
         return;
-      }
-
-      // Truy vấn toàn bộ Profiles từ Supabase để ánh xạ chính xác từng Owner
-      if (sb) {
-        const { data: profs } = await sb.from('profiles').select('id, email, full_name, role');
-        if (profs && profs.length > 0) {
-          profs.forEach(p => { 
-            if (p.id) profilesMap[p.id] = p;
-            if (p.email) profilesMap[p.email] = p;
-          });
-        }
       }
 
       tbody.innerHTML = data.map(s => {
