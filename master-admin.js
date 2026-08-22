@@ -759,7 +759,8 @@ document.addEventListener('DOMContentLoaded', async () => {
       const { data: members, error } = await sb
         .from('shop_members')
         .select('id, user_id, role, created_at')
-        .eq('shop_id', shopId);
+        .eq('shop_id', shopId)
+        .is('removed_at', null);
 
       if (error) throw error;
 
