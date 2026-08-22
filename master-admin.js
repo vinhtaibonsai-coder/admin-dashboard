@@ -676,7 +676,8 @@ document.addEventListener('DOMContentLoaded', async () => {
   async function loadUserDropdown(selectEl, selectedId) {
     selectEl.innerHTML = '<option value="">Đang tải danh sách người dùng...</option>';
     try {
-      const { data: profiles } = await sb.from('profiles').select('id, email, full_name').order('full_name');
+      const { data: profiles, error } = await sb.from('profiles').select('id, email, full_name').order('full_name');
+      if (error) throw error;
       let userList = profiles || [];
 
       // Nếu có selectedId nhưng chưa có trong danh sách profiles, bổ sung ngay vào đầu
@@ -687,28 +688,31 @@ document.addEventListener('DOMContentLoaded', async () => {
         } else {
           userList.unshift({
             id: selectedId,
-            email: 'tai@luathuysinh.vn',
-            full_name: 'Nguyễn Văn Tài (Chủ Shop)'
+            email: 'chushop@luathuysinh.vn',
+            full_name: 'Chủ Shop'
           });
         }
       }
 
       if (userList.length === 0) {
         userList = [
-          { id: selectedId || 'owner_001', email: 'tai@luathuysinh.vn', full_name: 'Nguyễn Văn Tài (Chủ Shop)' }
+          { id: selectedId || 'owner_001', email: 'chushop@luathuysinh.vn', full_name: 'Chủ Shop' }
         ];
       }
 
       selectEl.innerHTML = userList.map(u => {
         const name = u.full_name || u.email?.split('@')[0] || 'Người dùng';
-        const mail = u.email || 'tai@luathuysinh.vn';
-        const isSelected = u.id === selectedId || (selectedId && u.id === selectedId);
+        const mail = u.email || '—';
+        const isSelected = u.id === selectedId;
         return `<option value="${u.id}" ${isSelected ? 'selected' : ''}>👤 ${escapeHtml(name)} (${escapeHtml(mail)})</option>`;
       }).join('');
-    } catch (_) {
-      selectEl.innerHTML = `
-        <option value="${selectedId || ''}" selected>👤 Nguyễn Văn Tài (tai@luathuysinh.vn)</option>
-      `;
+    } catch (err) {
+      console.error('loadUserDropdown error:', err);
+      if (selectedId) {
+        selectEl.innerHTML = `<option value="${selectedId}" selected>👤 Chủ Shop (ID: ${selectedId.slice(0, 8)})</option>`;
+      } else {
+        selectEl.innerHTML = '<option value="">— Chọn Chủ sở hữu —</option>';
+      }
     }
   }
 
@@ -863,17 +867,31 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     btnSaveShopInfo.disabled = true;
     btnSaveShopInfo.innerHTML = 'Đang lưu...';
-
+ 
     try {
+      // 1. Cập nhật thông tin shop và owner_id
       const { error } = await sb.from('shops').update({ name, status, owner_id: ownerId }).eq('id', id);
       if (error) throw error;
 
-      const { data: existingOwner } = await sb.from('shop_members').select('role').eq('shop_id', id).eq('user_id', ownerId).maybeSingle();
-      if (!existingOwner) {
-        await sb.rpc('admin_add_shop_member', {
-          p_shop_id: id, p_user_id: ownerId, p_role: 'SHOP_OWNER'
-        });
-      }
+      // 2. Hạ cấp các chủ sở hữu cũ của shop này trong shop_members xuống SHOP_MANAGER
+      await sb.from('shop_members')
+        .update({ role: 'SHOP_MANAGER' })
+        .eq('shop_id', id)
+        .eq('role', 'SHOP_OWNER')
+        .neq('user_id', ownerId);
+
+      // 3. Đảm bảo chủ sở hữu mới có quyền SHOP_OWNER trong shop_members
+      const { data: roleData } = await sb.from('roles').select('id').eq('code', 'SHOP_OWNER').maybeSingle();
+      const ownerRoleId = roleData ? roleData.id : null;
+
+      await sb.from('shop_members').upsert({
+        shop_id: id,
+        user_id: ownerId,
+        role: 'SHOP_OWNER',
+        role_id: ownerRoleId,
+        status: 'active',
+        removed_at: null
+      }, { onConflict: 'shop_id,user_id' });
 
       // Save shop quotas
       const maxDevices = parseInt(document.getElementById('edit-shop-max-devices').value, 10) || 5;
