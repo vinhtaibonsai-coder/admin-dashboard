@@ -106,6 +106,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
 
   const sb = getSupabaseClient();
+  let _userShopsLoaded = false;
 
   // ─── 2. CHUYỂN TAB SIDEBAR (Đồng bộ class nav-item active từ options.html) ─
   const tabButtons = {
@@ -1569,7 +1570,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
   }
 
-  let _userShopsLoaded = false;
 
   async function loadUserShopsFilter() {
     if (_userShopsLoaded) return;
